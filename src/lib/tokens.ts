@@ -45,7 +45,7 @@ export async function createTokensForOrder(params: {
 export async function validateAndRedeemToken(params: {
   token: string
   machineCode: string
-}): Promise<{ success: boolean; product?: string; reason?: string }> {
+}): Promise<{ success: boolean; product?: string; reason?: string; relay_id?: number; dispense_time_ms?: number; is_half?: boolean }> {
   const { token, machineCode } = params
 
   // 1. Get machine ID from machine_code
