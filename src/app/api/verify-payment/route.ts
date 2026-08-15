@@ -40,12 +40,15 @@ export async function POST(req: NextRequest) {
     })
 
     // 3. Save transaction record
+    // Clean product IDs to remove _half / _full suffixes before saving to UUID array
+    const cleanProductIds = productIds.map((id: string) => id.replace('_half', '').replace('_full', ''))
+
     await supabaseAdmin.from('transactions').insert({
       order_id:       razorpay_order_id,
       payment_id:     razorpay_payment_id,
       user_id:        userId ?? null,
       phone:          phone ?? null,
-      product_ids:    productIds,
+      product_ids:    cleanProductIds,
       token_ids:      tokenIds,
       payment_amount: amount,
       payment_status: 'paid',
