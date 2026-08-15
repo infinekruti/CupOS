@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────
-type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number }
+type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number; productStats:{name:string;full:number;half:number;total:number}[]; sizeStats:{full:number;half:number}; revenueTrend:{date:string;revenue:number}[] }
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
@@ -82,6 +82,66 @@ function DashboardSection() {
         <KPI label="Coffee Dispensed"  value={`${stats.coffeeToday}`}     sub="today" color='#a78bfa' />
         <KPI label="Machines Online"   value={`${stats.onlineMachines}/${stats.totalMachines}`} color={stats.onlineMachines>0?C.green:C.red} sub={`${stats.offlineMachines} offline`} />
         <KPI label="Active Customers"  value={`${stats.activeCustomers}`} sub="this month" color='#60a5fa' />
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24}}>
+        {/* Product Sales Breakdown */}
+        <div style={card}>
+          <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5,marginBottom:14}}>Top Products (This Month)</p>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            {stats.productStats.slice(0,5).map(p => {
+              const max = Math.max(...stats.productStats.map(x=>x.total), 1)
+              const pct = (p.total / max) * 100
+              return (
+                <div key={p.name}>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:13,marginBottom:4}}>
+                    <span style={{color:C.cream}}>{p.name}</span>
+                    <span style={{color:C.gold,fontWeight:700}}>{p.total} cups</span>
+                  </div>
+                  <div style={{width:'100%',height:6,background:'rgba(255,255,255,0.05)',borderRadius:3,overflow:'hidden'}}>
+                    <div style={{width:`${pct}%`,height:'100%',background:C.goldL,borderRadius:3}} />
+                  </div>
+                  <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.muted,marginTop:4}}>
+                    <span>{p.full} Full</span>
+                    <span>{p.half} Half</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Size Split & Revenue Trend */}
+        <div style={{display:'flex',flexDirection:'column',gap:24}}>
+          <div style={{...card,display:'flex',alignItems:'center',gap:20}}>
+            <div style={{flex:1}}>
+              <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5,marginBottom:6}}>Size Preferences</p>
+              <div style={{display:'flex',alignItems:'flex-end',gap:12}}>
+                <div><span style={{color:C.cream,fontSize:24,fontWeight:700}}>{stats.sizeStats.full}</span> <span style={{color:C.muted,fontSize:12}}>Full</span></div>
+                <div><span style={{color:C.goldL,fontSize:24,fontWeight:700}}>{stats.sizeStats.half}</span> <span style={{color:C.muted,fontSize:12}}>Half</span></div>
+              </div>
+            </div>
+            <div style={{width:60,height:60,borderRadius:'50%',background:`conic-gradient(${C.goldL} 0% ${(stats.sizeStats.half/(stats.sizeStats.full+stats.sizeStats.half||1))*100}%, rgba(255,255,255,0.1) 0)`}} />
+          </div>
+
+          <div style={{...card,flex:1}}>
+            <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5,marginBottom:14}}>7-Day Revenue Trend</p>
+            <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',height:80,gap:4}}>
+              {stats.revenueTrend.map((t,i) => {
+                const max = Math.max(...stats.revenueTrend.map(x=>x.revenue), 1)
+                const h = Math.max((t.revenue / max) * 100, 4)
+                return (
+                  <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}>
+                    <div style={{width:'100%',height:80,display:'flex',alignItems:'flex-end'}}>
+                      <div style={{width:'100%',height:`${h}%`,background:t.revenue>0?C.gold:'rgba(255,255,255,0.05)',borderRadius:4}} title={rupee(t.revenue)} />
+                    </div>
+                    <span style={{fontSize:9,color:C.muted}}>{t.date.slice(5,10)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       </div>
       <div style={card}>
         <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5,marginBottom:14}}>Recent Transactions</p>
