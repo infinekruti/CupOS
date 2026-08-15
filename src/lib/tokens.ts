@@ -62,7 +62,7 @@ export async function validateAndRedeemToken(params: {
   // 2. Find token with row lock (Supabase uses serializable transactions)
   const { data: tokenData } = await supabaseAdmin
     .from('tokens')
-    .select('id, status, expires_at, product_id, products(name)')
+    .select('id, status, expires_at, product_id, products(name, relay_id, dispense_time_ms, is_half_command)')
     .eq('token', token)
     .single()
 
@@ -88,9 +88,16 @@ export async function validateAndRedeemToken(params: {
     return { success: false, reason: 'Token already used' }
   }
 
-  const productName = (tokenData.products as any)?.name ?? 'coffee'
+  const product = tokenData.products as any
+  const productName = product?.name ?? 'coffee'
 
-  return { success: true, product: productName }
+  return { 
+    success: true, 
+    product: productName,
+    relay_id: product?.relay_id ?? 0,
+    dispense_time_ms: product?.dispense_time_ms ?? 2000,
+    is_half: product?.is_half_command ?? false
+  }
 }
 
 /** Get all tokens for an order (for QR display page) */

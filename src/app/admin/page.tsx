@@ -8,6 +8,7 @@ type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:numb
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
+type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; is_half_command:boolean }
 
 // ── Styles ────────────────────────────────────────────────────
 const C = { bg:'#070504', side:'#0A0806', card:'rgba(255,255,255,0.04)', border:'rgba(200,146,42,0.14)', gold:'#C8922A', goldL:'#E5A93C', cream:'#F5F0E8', muted:'#C4B99A', green:'#22c55e', red:'#ef4444', yellow:'#f59e0b', font:"'Outfit',sans-serif" }
@@ -18,6 +19,7 @@ const btnGhost = { background:'rgba(255,255,255,0.05)', border:`1px solid ${C.bo
 
 const NAV = [
   { id:'dashboard',    label:'Dashboard',     icon:'▦' },
+  { id:'products',     label:'Products',      icon:'☕' },
   { id:'machines',     label:'Machines',      icon:'⊡' },
   { id:'inventory',    label:'Inventory',     icon:'▤' },
   { id:'transactions', label:'Transactions',  icon:'⊟' },
@@ -243,6 +245,112 @@ function TokensSection() {
   )
 }
 
+// ── Products ──────────────────────────────────────────────────
+// ── Products ──────────────────────────────────────────────────
+function ProductsSection() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [editId, setEditId] = useState<string|null>(null)
+  const [formData, setFormData] = useState<Partial<Product>>({})
+  
+  const load = useCallback(() => { fetch('/api/admin/products').then(r=>r.json()).then(d=>setProducts(d.products??[])) }, [])
+  useEffect(() => { load() }, [load])
+
+  const handleSave = async (id?: string) => {
+    if (id) {
+      await fetch('/api/admin/products', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...formData }) })
+    } else {
+      await fetch('/api/admin/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formData) })
+    }
+    setEditId(null); setFormData({}); load()
+  }
+
+  const inp = { background:'rgba(255,255,255,0.05)', border:`1px solid ${C.border}`, borderRadius:10, padding:'8px 12px', color:C.cream, fontSize:13, fontFamily:C.font, outline:'none', width:'100%' }
+  
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Product Management</h2>
+        <button onClick={()=>{setEditId('new'); setFormData({ name:'', description:'', price:2000, active:true, relay_id:0, dispense_time_ms:300, is_half_command:false })}} style={btnGold}>+ New Product</button>
+      </div>
+
+      <div style={{...card,padding:0,overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+          <thead><tr style={{color:C.muted}}>
+            {['Name & Desc', 'Price', 'Relay Config', 'Modifiers', 'Status', 'Action'].map(h=>(
+              <th key={h} style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {editId === 'new' && (
+              <tr style={{borderTop:'1px solid rgba(255,255,255,0.04)', background:'rgba(255,255,255,0.02)'}}>
+                <td style={{padding:'11px 16px', display:'flex', flexDirection:'column', gap:6}}>
+                  <input placeholder="Name" value={formData.name||''} onChange={e=>setFormData({...formData, name:e.target.value})} style={inp} />
+                  <input placeholder="Description" value={formData.description||''} onChange={e=>setFormData({...formData, description:e.target.value})} style={inp} />
+                </td>
+                <td style={{padding:'11px 16px'}}><input type="number" placeholder="Paise" value={formData.price||0} onChange={e=>setFormData({...formData, price:parseInt(e.target.value)})} style={{...inp, width:80}} /></td>
+                <td style={{padding:'11px 16px', display:'flex', flexDirection:'column', gap:6}}>
+                  <div style={{display:'flex', gap:6, alignItems:'center'}}><span style={{color:C.muted,fontSize:11}}>Relay</span><input type="number" value={formData.relay_id||0} onChange={e=>setFormData({...formData, relay_id:parseInt(e.target.value)})} style={{...inp, width:50, padding:4}} /></div>
+                  <div style={{display:'flex', gap:6, alignItems:'center'}}><span style={{color:C.muted,fontSize:11}}>ms</span><input type="number" value={formData.dispense_time_ms||300} onChange={e=>setFormData({...formData, dispense_time_ms:parseInt(e.target.value)})} style={{...inp, width:70, padding:4}} /></div>
+                </td>
+                <td style={{padding:'11px 16px'}}>
+                  <label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.is_half_command||false} onChange={e=>setFormData({...formData, is_half_command:e.target.checked})} /> Send 'Half' Command</label>
+                </td>
+                <td style={{padding:'11px 16px'}}><label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.active||false} onChange={e=>setFormData({...formData, active:e.target.checked})} /> Active</label></td>
+                <td style={{padding:'11px 16px', display:'flex', gap:6}}>
+                  <button onClick={()=>handleSave()} style={{...btnGold, padding:'6px 12px'}}>Save</button>
+                  <button onClick={()=>setEditId(null)} style={{...btnGhost, padding:'6px 12px'}}>Cancel</button>
+                </td>
+              </tr>
+            )}
+            
+            {products.map(p=>(
+              editId === p.id ? (
+                <tr key={p.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)', background:'rgba(255,255,255,0.02)'}}>
+                  <td style={{padding:'11px 16px', display:'flex', flexDirection:'column', gap:6}}>
+                    <input value={formData.name||''} onChange={e=>setFormData({...formData, name:e.target.value})} style={inp} />
+                    <input value={formData.description||''} onChange={e=>setFormData({...formData, description:e.target.value})} style={inp} />
+                  </td>
+                  <td style={{padding:'11px 16px'}}><input type="number" value={formData.price||0} onChange={e=>setFormData({...formData, price:parseInt(e.target.value)})} style={{...inp, width:80}} /></td>
+                  <td style={{padding:'11px 16px', display:'flex', flexDirection:'column', gap:6}}>
+                    <div style={{display:'flex', gap:6, alignItems:'center'}}><span style={{color:C.muted,fontSize:11}}>Relay</span><input type="number" value={formData.relay_id||0} onChange={e=>setFormData({...formData, relay_id:parseInt(e.target.value)})} style={{...inp, width:50, padding:4}} /></div>
+                    <div style={{display:'flex', gap:6, alignItems:'center'}}><span style={{color:C.muted,fontSize:11}}>ms</span><input type="number" value={formData.dispense_time_ms||300} onChange={e=>setFormData({...formData, dispense_time_ms:parseInt(e.target.value)})} style={{...inp, width:70, padding:4}} /></div>
+                  </td>
+                  <td style={{padding:'11px 16px'}}>
+                    <label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.is_half_command||false} onChange={e=>setFormData({...formData, is_half_command:e.target.checked})} /> Send 'Half' Command</label>
+                  </td>
+                  <td style={{padding:'11px 16px'}}><label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.active||false} onChange={e=>setFormData({...formData, active:e.target.checked})} /> Active</label></td>
+                  <td style={{padding:'11px 16px', display:'flex', gap:6}}>
+                    <button onClick={()=>handleSave(p.id)} style={{...btnGold, padding:'6px 12px'}}>Save</button>
+                    <button onClick={()=>setEditId(null)} style={{...btnGhost, padding:'6px 12px'}}>Cancel</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={p.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                  <td style={{padding:'11px 16px'}}>
+                    <div style={{color:C.cream, fontWeight:600}}>{p.name}</div>
+                    <div style={{color:C.muted, fontSize:12, marginTop:2}}>{p.description}</div>
+                  </td>
+                  <td style={{padding:'11px 16px',color:C.gold}}>{rupee(p.price)}</td>
+                  <td style={{padding:'11px 16px',color:C.muted,fontSize:12}}>
+                    Relay {p.relay_id} <br/> {p.dispense_time_ms}ms
+                  </td>
+                  <td style={{padding:'11px 16px'}}>
+                    {p.is_half_command && <span style={badge('#3b82f6')}>Half Modifier</span>}
+                  </td>
+                  <td style={{padding:'11px 16px'}}><span style={badge(p.active?C.green:C.red)}>{p.active?'Active':'Hidden'}</span></td>
+                  <td style={{padding:'11px 16px'}}>
+                    <button onClick={()=>{setEditId(p.id); setFormData(p)}} style={{...btnGhost, fontSize:11}}>Edit</button>
+                  </td>
+                </tr>
+              )
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Admin Page ───────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter()
@@ -355,6 +463,7 @@ export default function AdminPage() {
 
   const renderContent = () => {
     if (tab==='dashboard')    return <DashboardSection/>
+    if (tab==='products')     return <ProductsSection/>
     if (tab==='machines')     return <MachinesSection/>
     if (tab==='transactions') return <TransactionsSection/>
     if (tab==='tokens')       return <TokensSection/>
