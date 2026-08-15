@@ -1,0 +1,284 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import { supabase } from '@/lib/supabase'
+
+type Product = {
+  id: string
+  name: string
+  description: string
+  price: number
+  active: boolean
+}
+
+type Cart = Record<string, number> // productId → quantity
+
+const DRINK_IMAGES: Record<string, string> = {
+  Espresso: '/espresso.png',
+  Cappuccino: '/cappuccino.png',
+  Latte: '/latte.png',
+  'Hot Chocolate': '/hot-chocolate.png',
+}
+
+const DRINK_EMOJIS: Record<string, string> = {
+  Espresso: '☕',
+  Cappuccino: '🍵',
+  Latte: '🥛',
+  'Hot Chocolate': '🍫',
+}
+
+const S = {
+  bg: '#0D0A08',
+  card: 'rgba(255,255,255,0.04)',
+  cardHover: 'rgba(200,146,42,0.08)',
+  border: 'rgba(200,146,42,0.12)',
+  borderActive: 'rgba(200,146,42,0.5)',
+  gold: '#C8922A',
+  goldLight: '#E5A93C',
+  cream: '#F5F0E8',
+  muted: '#C4B99A',
+  font: "'Outfit', sans-serif",
+}
+
+export default function MenuPage() {
+  const router = useRouter()
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [cart, setCart] = useState<Cart>({})
+
+  const totalItems = Object.values(cart).reduce((s, q) => s + q, 0)
+  const totalPrice = products.reduce((s, p) => s + (cart[p.id] ?? 0) * p.price, 0)
+
+  useEffect(() => {
+    async function fetchProducts() {
+      const { data } = await supabase
+        .from('products')
+        .select('*')
+        .eq('active', true)
+        .order('created_at')
+      setProducts(data ?? [])
+      setLoading(false)
+    }
+    fetchProducts()
+  }, [])
+
+  const increment = (id: string) =>
+    setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
+
+  const decrement = (id: string) =>
+    setCart(c => {
+      const next = { ...c }
+      if ((next[id] ?? 0) <= 1) delete next[id]
+      else next[id]--
+      return next
+    })
+
+  const handleProceed = () => {
+    // Build productIds array with duplicates for quantities
+    const productIds: string[] = []
+    for (const [id, qty] of Object.entries(cart)) {
+      for (let i = 0; i < qty; i++) productIds.push(id)
+    }
+    sessionStorage.setItem('cupos_cart', JSON.stringify(productIds))
+    // Also store cart metadata for display in checkout
+    sessionStorage.setItem('cupos_cart_meta', JSON.stringify(
+      products
+        .filter(p => cart[p.id])
+        .map(p => ({ id: p.id, name: p.name, price: p.price, qty: cart[p.id] }))
+    ))
+    router.push('/checkout')
+  }
+
+  return (
+    <div style={{ minHeight: '100dvh', background: S.bg, fontFamily: S.font, paddingBottom: totalItems > 0 ? 120 : 32 }}>
+
+      {/* Header */}
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '48px 20px 8px' }}>
+        <span style={{
+          fontSize: 24, fontWeight: 800, letterSpacing: -0.5,
+        }}>
+          <span style={{ color: '#FFFFFF' }}>cup</span>
+          <span style={{
+            background: 'linear-gradient(135deg, #E5A93C, #C8922A)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          }}>OS</span>
+        </span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* My Orders */}
+          <button
+            id="my-orders-btn"
+            onClick={() => router.push('/orders')}
+            title="My Orders"
+            style={{
+              background: 'rgba(255,255,255,0.05)', border: `1px solid ${S.border}`,
+              borderRadius: 10, padding: '8px 10px', color: S.muted,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+            </svg>
+          </button>
+
+          {/* Sign out */}
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut()
+              sessionStorage.removeItem('cupos_guest')
+              router.push('/')
+            }}
+            style={{
+              background: 'rgba(255,255,255,0.05)', border: `1px solid ${S.border}`,
+              borderRadius: 10, padding: '6px 14px', color: S.muted,
+              fontSize: 12, fontFamily: S.font, cursor: 'pointer',
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <div style={{ padding: '12px 20px 20px' }}>
+        <h1 style={{ fontSize: 32, fontWeight: 700, color: S.cream, lineHeight: 1.2 }}>
+          What would you<br />like today?
+        </h1>
+        <p style={{ color: S.muted, fontSize: 14, marginTop: 6 }}>
+          Select your drinks — add multiples of any item
+        </p>
+      </div>
+
+      {/* Product List */}
+      <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {loading
+          ? [1, 2, 3, 4].map(i => (
+              <div key={i} style={{ height: 88, borderRadius: 20, background: S.card, animation: 'pulse 1.5s infinite' }} />
+            ))
+          : products.map(product => {
+              const qty = cart[product.id] ?? 0
+              const isInCart = qty > 0
+              return (
+                <div
+                  key={product.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '14px 16px', borderRadius: 20,
+                    background: isInCart ? 'rgba(200,146,42,0.09)' : S.card,
+                    border: `1px solid ${isInCart ? S.borderActive : S.border}`,
+                    transition: 'all 0.25s',
+                  }}
+                >
+                  {/* Drink image */}
+                  <div style={{
+                    width: 58, height: 58, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+                    border: `2px solid ${isInCart ? 'rgba(200,146,42,0.5)' : 'rgba(200,146,42,0.15)'}`,
+                    background: '#1A1410', transition: 'border-color 0.25s',
+                  }}>
+                    <Image
+                      src={DRINK_IMAGES[product.name] ?? '/espresso.png'}
+                      alt={product.name}
+                      width={58} height={58}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ color: S.cream, fontWeight: 600, fontSize: 16 }}>
+                      {DRINK_EMOJIS[product.name] ?? '☕'} {product.name}
+                    </p>
+                    <p style={{ color: S.muted, fontSize: 13, marginTop: 2 }}>
+                      ₹{Math.floor(product.price / 100)} each
+                    </p>
+                  </div>
+
+                  {/* Quantity control */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                    {isInCart ? (
+                      <>
+                        <button
+                          id={`decrement-${product.id}`}
+                          onClick={() => decrement(product.id)}
+                          style={{
+                            width: 34, height: 34, borderRadius: '50%',
+                            background: 'rgba(255,255,255,0.08)', border: `1px solid ${S.border}`,
+                            color: S.cream, fontSize: 20, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontFamily: S.font, lineHeight: 1,
+                          }}
+                        >−</button>
+                        <span style={{ color: S.gold, fontWeight: 700, fontSize: 18, minWidth: 20, textAlign: 'center' }}>
+                          {qty}
+                        </span>
+                      </>
+                    ) : null}
+                    <button
+                      id={`increment-${product.id}`}
+                      onClick={() => increment(product.id)}
+                      style={{
+                        width: 34, height: 34, borderRadius: '50%',
+                        background: isInCart
+                          ? 'linear-gradient(135deg, #E5A93C, #C8922A)'
+                          : 'rgba(200,146,42,0.15)',
+                        border: `1px solid ${isInCart ? 'transparent' : S.border}`,
+                        color: isInCart ? '#0D0A08' : S.gold,
+                        fontSize: 20, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontFamily: S.font, lineHeight: 1, fontWeight: 700,
+                        transition: 'all 0.2s',
+                      }}
+                    >+</button>
+                  </div>
+                </div>
+              )
+            })}
+      </div>
+
+      {/* Sticky Cart Bar */}
+      {totalItems > 0 && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0,
+          padding: '12px 16px 28px',
+          background: 'linear-gradient(to top, #0D0A08 60%, transparent)',
+        }}>
+          <button
+            id="proceed-to-pay-btn"
+            onClick={handleProceed}
+            style={{
+              width: '100%', padding: '16px 20px', borderRadius: 20,
+              background: 'linear-gradient(135deg, #E5A93C, #C8922A)',
+              border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              fontFamily: S.font, boxShadow: '0 8px 40px rgba(200,146,42,0.5)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                background: 'rgba(0,0,0,0.2)', borderRadius: 10,
+                padding: '4px 10px', fontSize: 13, fontWeight: 700, color: '#0D0A08',
+              }}>
+                {totalItems} item{totalItems > 1 ? 's' : ''}
+              </div>
+              <span style={{ fontWeight: 700, fontSize: 16, color: '#0D0A08' }}>
+                Proceed to Pay
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontWeight: 800, fontSize: 18, color: '#0D0A08' }}>
+                ₹{Math.floor(totalPrice / 100)}
+              </span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0D0A08" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </button>
+        </div>
+      )}
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }`}</style>
+    </div>
+  )
+}
