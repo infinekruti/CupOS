@@ -71,10 +71,13 @@ export default function OrdersPage() {
       if (user?.id) {
         setUserName(user.user_metadata?.full_name || user.phone || 'You')
         queryParam = `userId=${user.id}`
+        // Clean phone number from auth (+91) to match the 10-digit format stored during guest checkout
+        const cleanPhone = user.phone ? user.phone.replace('+91', '').replace('+', '') : localStorage.getItem('cupos_phone')
+        if (cleanPhone) queryParam += `&phone=${encodeURIComponent(cleanPhone)}`
       } else {
         // Guest — try phone from localStorage fallback
         const guestPhone = localStorage.getItem('cupos_phone')
-        if (guestPhone) queryParam = `phone=${guestPhone}`
+        if (guestPhone) queryParam = `phone=${encodeURIComponent(guestPhone)}`
       }
 
       if (!queryParam) {

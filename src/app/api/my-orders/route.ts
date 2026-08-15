@@ -21,9 +21,11 @@ export async function GET(req: NextRequest) {
       .from('transactions')
       .select('order_id, payment_amount, created_at, phone, token_ids')
       .order('created_at', { ascending: false })
-      .limit(20)
+      .limit(50)
 
-    if (userId) {
+    if (userId && phone) {
+      query = query.or(`user_id.eq.${userId},phone.eq.${phone}`)
+    } else if (userId) {
       query = query.eq('user_id', userId)
     } else if (phone) {
       query = query.eq('phone', phone)
