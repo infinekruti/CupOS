@@ -339,7 +339,7 @@ function ProductsSection() {
                   </td>
                   <td style={{padding:'11px 16px'}}><span style={badge(p.active?C.green:C.red)}>{p.active?'Active':'Hidden'}</span></td>
                   <td style={{padding:'11px 16px'}}>
-                    <button onClick={()=>{setEditId(p.id); setFormData(p)}} style={{...btnGhost, fontSize:11}}>Edit</button>
+                    <button onClick={()=>{setEditId(p.id ?? null); setFormData(p)}} style={{...btnGhost, fontSize:11}}>Edit</button>
                   </td>
                 </tr>
               )
