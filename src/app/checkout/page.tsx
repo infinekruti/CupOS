@@ -53,6 +53,9 @@ export default function CheckoutPage() {
       setUserId(data.session?.user?.id ?? null)
     })
 
+    const savedPhone = localStorage.getItem('cupos_phone')
+    if (savedPhone) setPhone(savedPhone)
+
     // Load raw productIds for payment
     const cart: string[] = JSON.parse(sessionStorage.getItem('cupos_cart') ?? '[]')
     if (cart.length === 0) { router.push('/menu'); return }
@@ -121,6 +124,7 @@ export default function CheckoutPage() {
           if (v.success) {
             sessionStorage.removeItem('cupos_cart')
             sessionStorage.removeItem('cupos_cart_meta')
+            if (phone) localStorage.setItem('cupos_phone', phone)
             router.push(`/order/${v.orderId}`)
           } else {
             setStep('error')
