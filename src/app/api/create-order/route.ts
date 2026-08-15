@@ -20,23 +20,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No products specified' }, { status: 400 })
     }
 
-    // Build quantity map from productIds (duplicates = quantity > 1)
-    const qtyMap: Record<string, number> = {}
-    for (const id of productIds) qtyMap[id] = (qtyMap[id] ?? 0) + 1
+    // Build quantity map from productIds (duplicates = quantity > 1, parsed for sizes)
+    const qtyMap: Record<string, { full: number; half: number }> = {}
+    for (const rawId of productIds) {
+      const isHalf = rawId.endsWith('_half')
+      const baseId = rawId.replace('_half', '').replace('_full', '')
+      if (!qtyMap[baseId]) qtyMap[baseId] = { full: 0, half: 0 }
+      if (isHalf) qtyMap[baseId].half++
+      else qtyMap[baseId].full++
+    }
 
     // Fetch prices for unique product IDs only
     const { supabaseAdmin } = await import('@/lib/supabase')
     const { data: products, error } = await supabaseAdmin
       .from('products')
-      .select('id, name, price')
+      .select('id, name, price, half_price')
       .in('id', Object.keys(qtyMap))
 
     if (error || !products) {
       return NextResponse.json({ error: 'Products not found' }, { status: 404 })
     }
 
-    // Calculate total respecting quantities (prices are in paise)
-    const totalAmount = products.reduce((sum, p) => sum + p.price * (qtyMap[p.id] ?? 1), 0)
+    // Calculate total respecting quantities and sizes (prices are in paise)
+    const totalAmount = products.reduce((sum, p) => {
+      const q = qtyMap[p.id] || { full: 0, half: 0 }
+      return sum + (p.price * q.full) + ((p.half_price || 0) * q.half)
+    }, 0)
 
     // Create Razorpay order
     const order = await razorpay.orders.create({

@@ -11,9 +11,11 @@ type Product = {
   description: string
   price: number
   active: boolean
+  allow_half: boolean
+  half_price: number
 }
 
-type Cart = Record<string, number> // productId → quantity
+type Cart = Record<string, { full: number; half: number }> // productId → { full, half }
 
 const DRINK_IMAGES: Record<string, string> = {
   Espresso: '/espresso.png',
@@ -48,8 +50,11 @@ export default function MenuPage() {
   const [loading, setLoading] = useState(true)
   const [cart, setCart] = useState<Cart>({})
 
-  const totalItems = Object.values(cart).reduce((s, q) => s + q, 0)
-  const totalPrice = products.reduce((s, p) => s + (cart[p.id] ?? 0) * p.price, 0)
+  const totalItems = Object.values(cart).reduce((s, sizes) => s + (sizes.full || 0) + (sizes.half || 0), 0)
+  const totalPrice = products.reduce((s, p) => {
+    const qtys = cart[p.id] || { full: 0, half: 0 }
+    return s + (qtys.full * p.price) + (qtys.half * p.half_price)
+  }, 0)
 
   useEffect(() => {
     async function fetchProducts() {
@@ -64,30 +69,44 @@ export default function MenuPage() {
     fetchProducts()
   }, [])
 
-  const increment = (id: string) =>
-    setCart(c => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
-
-  const decrement = (id: string) =>
+  const increment = (id: string, isHalf: boolean) => {
     setCart(c => {
-      const next = { ...c }
-      if ((next[id] ?? 0) <= 1) delete next[id]
-      else next[id]--
-      return next
+      const sizes = c[id] || { full: 0, half: 0 }
+      return { ...c, [id]: { ...sizes, [isHalf ? 'half' : 'full']: sizes[isHalf ? 'half' : 'full'] + 1 } }
     })
+  }
+
+  const decrement = (id: string, isHalf: boolean) => {
+    setCart(c => {
+      if (!c[id]) return c
+      const sizes = { ...c[id] }
+      if (sizes[isHalf ? 'half' : 'full'] > 0) sizes[isHalf ? 'half' : 'full']--
+      
+      if (sizes.full === 0 && sizes.half === 0) {
+        const next = { ...c }
+        delete next[id]
+        return next
+      }
+      return { ...c, [id]: sizes }
+    })
+  }
 
   const handleProceed = () => {
-    // Build productIds array with duplicates for quantities
     const productIds: string[] = []
-    for (const [id, qty] of Object.entries(cart)) {
-      for (let i = 0; i < qty; i++) productIds.push(id)
+    for (const [id, sizes] of Object.entries(cart)) {
+      for (let i = 0; i < sizes.full; i++) productIds.push(`${id}_full`)
+      for (let i = 0; i < sizes.half; i++) productIds.push(`${id}_half`)
     }
     sessionStorage.setItem('cupos_cart', JSON.stringify(productIds))
-    // Also store cart metadata for display in checkout
-    sessionStorage.setItem('cupos_cart_meta', JSON.stringify(
-      products
-        .filter(p => cart[p.id])
-        .map(p => ({ id: p.id, name: p.name, price: p.price, qty: cart[p.id] }))
-    ))
+    
+    const meta: any[] = []
+    products.forEach(p => {
+      const sizes = cart[p.id]
+      if (!sizes) return
+      if (sizes.full > 0) meta.push({ id: `${p.id}_full`, name: p.name, price: p.price, qty: sizes.full, isHalf: false })
+      if (sizes.half > 0) meta.push({ id: `${p.id}_half`, name: `Half ${p.name}`, price: p.half_price, qty: sizes.half, isHalf: true })
+    })
+    sessionStorage.setItem('cupos_cart_meta', JSON.stringify(meta))
     router.push('/checkout')
   }
 
@@ -158,8 +177,8 @@ export default function MenuPage() {
               <div key={i} style={{ height: 88, borderRadius: 20, background: S.card, animation: 'pulse 1.5s infinite' }} />
             ))
           : products.map(product => {
-              const qty = cart[product.id] ?? 0
-              const isInCart = qty > 0
+              const qtys = cart[product.id] || { full: 0, half: 0 }
+              const isInCart = qtys.full > 0 || qtys.half > 0
               return (
                 <div
                   key={product.id}
@@ -185,52 +204,110 @@ export default function MenuPage() {
                     />
                   </div>
 
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ color: S.cream, fontWeight: 600, fontSize: 16 }}>
-                      {DRINK_EMOJIS[product.name] ?? '☕'} {product.name}
-                    </p>
-                    <p style={{ color: S.muted, fontSize: 13, marginTop: 2 }}>
-                      ₹{Math.floor(product.price / 100)} each
-                    </p>
-                  </div>
-
-                  {/* Quantity control */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-                    {isInCart ? (
-                      <>
+                  {/* Info and Quantity Controls */}
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Full Size Row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <p style={{ color: S.cream, fontWeight: 600, fontSize: 16 }}>
+                          {DRINK_EMOJIS[product.name] ?? '☕'} {product.name} {product.allow_half && <span style={{fontSize:12, color:S.muted, fontWeight:400}}>(Full)</span>}
+                        </p>
+                        <p style={{ color: S.muted, fontSize: 13, marginTop: 2 }}>
+                          ₹{Math.floor(product.price / 100)}
+                        </p>
+                      </div>
+                      
+                      {/* Quantity control */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                        {qtys.full > 0 ? (
+                          <>
+                            <button
+                              id={`decrement-${product.id}-full`}
+                              onClick={() => decrement(product.id, false)}
+                              style={{
+                                width: 34, height: 34, borderRadius: '50%',
+                                background: 'rgba(255,255,255,0.08)', border: `1px solid ${S.border}`,
+                                color: S.cream, fontSize: 20, cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontFamily: S.font, lineHeight: 1,
+                              }}
+                            >−</button>
+                            <span style={{ color: S.gold, fontWeight: 700, fontSize: 18, minWidth: 20, textAlign: 'center' }}>
+                              {qtys.full}
+                            </span>
+                          </>
+                        ) : null}
                         <button
-                          id={`decrement-${product.id}`}
-                          onClick={() => decrement(product.id)}
+                          id={`increment-${product.id}-full`}
+                          onClick={() => increment(product.id, false)}
                           style={{
                             width: 34, height: 34, borderRadius: '50%',
-                            background: 'rgba(255,255,255,0.08)', border: `1px solid ${S.border}`,
-                            color: S.cream, fontSize: 20, cursor: 'pointer',
+                            background: qtys.full > 0
+                              ? 'linear-gradient(135deg, #E5A93C, #C8922A)'
+                              : 'rgba(200,146,42,0.15)',
+                            border: `1px solid ${qtys.full > 0 ? 'transparent' : S.border}`,
+                            color: qtys.full > 0 ? '#0D0A08' : S.gold,
+                            fontSize: 20, cursor: 'pointer',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontFamily: S.font, lineHeight: 1,
+                            fontFamily: S.font, lineHeight: 1, fontWeight: 700,
+                            transition: 'all 0.2s',
                           }}
-                        >−</button>
-                        <span style={{ color: S.gold, fontWeight: 700, fontSize: 18, minWidth: 20, textAlign: 'center' }}>
-                          {qty}
-                        </span>
-                      </>
-                    ) : null}
-                    <button
-                      id={`increment-${product.id}`}
-                      onClick={() => increment(product.id)}
-                      style={{
-                        width: 34, height: 34, borderRadius: '50%',
-                        background: isInCart
-                          ? 'linear-gradient(135deg, #E5A93C, #C8922A)'
-                          : 'rgba(200,146,42,0.15)',
-                        border: `1px solid ${isInCart ? 'transparent' : S.border}`,
-                        color: isInCart ? '#0D0A08' : S.gold,
-                        fontSize: 20, cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontFamily: S.font, lineHeight: 1, fontWeight: 700,
-                        transition: 'all 0.2s',
-                      }}
-                    >+</button>
+                        >+</button>
+                      </div>
+                    </div>
+
+                    {/* Half Size Row */}
+                    {product.allow_half && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: `1px solid ${S.border}`, paddingTop: 10 }}>
+                        <div>
+                          <p style={{ color: S.cream, fontWeight: 500, fontSize: 14 }}>
+                            Half {product.name}
+                          </p>
+                          <p style={{ color: S.muted, fontSize: 12, marginTop: 2 }}>
+                            ₹{Math.floor(product.half_price / 100)}
+                          </p>
+                        </div>
+                        
+                        {/* Quantity control */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                          {qtys.half > 0 ? (
+                            <>
+                              <button
+                                id={`decrement-${product.id}-half`}
+                                onClick={() => decrement(product.id, true)}
+                                style={{
+                                  width: 30, height: 30, borderRadius: '50%',
+                                  background: 'rgba(255,255,255,0.08)', border: `1px solid ${S.border}`,
+                                  color: S.cream, fontSize: 18, cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontFamily: S.font, lineHeight: 1,
+                                }}
+                              >−</button>
+                              <span style={{ color: S.gold, fontWeight: 700, fontSize: 16, minWidth: 20, textAlign: 'center' }}>
+                                {qtys.half}
+                              </span>
+                            </>
+                          ) : null}
+                          <button
+                            id={`increment-${product.id}-half`}
+                            onClick={() => increment(product.id, true)}
+                            style={{
+                              width: 30, height: 30, borderRadius: '50%',
+                              background: qtys.half > 0
+                                ? 'linear-gradient(135deg, #E5A93C, #C8922A)'
+                                : 'rgba(200,146,42,0.15)',
+                              border: `1px solid ${qtys.half > 0 ? 'transparent' : S.border}`,
+                              color: qtys.half > 0 ? '#0D0A08' : S.gold,
+                              fontSize: 18, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontFamily: S.font, lineHeight: 1, fontWeight: 700,
+                              transition: 'all 0.2s',
+                            }}
+                          >+</button>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
               )

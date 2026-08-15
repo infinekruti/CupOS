@@ -17,15 +17,20 @@ export async function createTokensForOrder(params: {
   const { orderId, productIds, phone, userId } = params
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
-  const rows = productIds.map((productId) => ({
-    token: generateTokenString(),
-    order_id: orderId,
-    product_id: productId,
-    phone: phone ?? null,
-    user_id: userId ?? null,
-    status: 'UNUSED',
-    expires_at: expiresAt.toISOString(),
-  }))
+  const rows = productIds.map((rawId) => {
+    const isHalf = rawId.endsWith('_half')
+    const baseId = rawId.replace('_half', '').replace('_full', '')
+    return {
+      token: generateTokenString(),
+      order_id: orderId,
+      product_id: baseId,
+      is_half: isHalf,
+      phone: phone ?? null,
+      user_id: userId ?? null,
+      status: 'UNUSED',
+      expires_at: expiresAt.toISOString(),
+    }
+  })
 
   // Insert all tokens, ensuring uniqueness by retrying on conflict
   const { data, error } = await supabaseAdmin
@@ -62,7 +67,7 @@ export async function validateAndRedeemToken(params: {
   // 2. Find token with row lock (Supabase uses serializable transactions)
   const { data: tokenData } = await supabaseAdmin
     .from('tokens')
-    .select('id, status, expires_at, product_id, products(name, relay_id, dispense_time_ms, is_half_command)')
+    .select('id, status, expires_at, product_id, is_half, products(name, relay_id, dispense_time_ms)')
     .eq('token', token)
     .single()
 
@@ -95,8 +100,8 @@ export async function validateAndRedeemToken(params: {
     success: true, 
     product: productName,
     relay_id: product?.relay_id ?? 0,
-    dispense_time_ms: product?.dispense_time_ms ?? 2000,
-    is_half: product?.is_half_command ?? false
+    dispense_time_ms: product?.dispense_time_ms ?? 300,
+    is_half: tokenData.is_half ?? false
   }
 }
 

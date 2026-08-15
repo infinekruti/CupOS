@@ -8,7 +8,7 @@ type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:numb
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
-type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; is_half_command:boolean }
+type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; allow_half:boolean; half_price:number }
 
 // ── Styles ────────────────────────────────────────────────────
 const C = { bg:'#070504', side:'#0A0806', card:'rgba(255,255,255,0.04)', border:'rgba(200,146,42,0.14)', gold:'#C8922A', goldL:'#E5A93C', cream:'#F5F0E8', muted:'#C4B99A', green:'#22c55e', red:'#ef4444', yellow:'#f59e0b', font:"'Outfit',sans-serif" }
@@ -270,7 +270,7 @@ function ProductsSection() {
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Product Management</h2>
-        <button onClick={()=>{setEditId('new'); setFormData({ name:'', description:'', price:2000, active:true, relay_id:0, dispense_time_ms:300, is_half_command:false })}} style={btnGold}>+ New Product</button>
+        <button onClick={()=>{setEditId('new'); setFormData({ name:'', description:'', price:2000, active:true, relay_id:0, dispense_time_ms:300, allow_half:false, half_price:1000 })}} style={btnGold}>+ New Product</button>
       </div>
 
       <div style={{...card,padding:0,overflowX:'auto'}}>
@@ -293,7 +293,13 @@ function ProductsSection() {
                   <div style={{display:'flex', gap:6, alignItems:'center'}}><span style={{color:C.muted,fontSize:11}}>ms</span><input type="number" value={formData.dispense_time_ms||300} onChange={e=>setFormData({...formData, dispense_time_ms:parseInt(e.target.value)})} style={{...inp, width:70, padding:4}} /></div>
                 </td>
                 <td style={{padding:'11px 16px'}}>
-                  <label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.is_half_command||false} onChange={e=>setFormData({...formData, is_half_command:e.target.checked})} /> Send 'Half' Command</label>
+                  <label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.allow_half||false} onChange={e=>setFormData({...formData, allow_half:e.target.checked})} /> Allow Half-Cup</label>
+                  {formData.allow_half && (
+                    <div style={{display:'flex', gap:6, alignItems:'center', marginTop:6}}>
+                      <span style={{color:C.muted,fontSize:11}}>Half Price:</span>
+                      <input type="number" placeholder="Paise" value={formData.half_price||0} onChange={e=>setFormData({...formData, half_price:parseInt(e.target.value)})} style={{...inp, width:60, padding:4}} />
+                    </div>
+                  )}
                 </td>
                 <td style={{padding:'11px 16px'}}><label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.active||false} onChange={e=>setFormData({...formData, active:e.target.checked})} /> Active</label></td>
                 <td style={{padding:'11px 16px', display:'flex', gap:6}}>
@@ -316,7 +322,13 @@ function ProductsSection() {
                     <div style={{display:'flex', gap:6, alignItems:'center'}}><span style={{color:C.muted,fontSize:11}}>ms</span><input type="number" value={formData.dispense_time_ms||300} onChange={e=>setFormData({...formData, dispense_time_ms:parseInt(e.target.value)})} style={{...inp, width:70, padding:4}} /></div>
                   </td>
                   <td style={{padding:'11px 16px'}}>
-                    <label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.is_half_command||false} onChange={e=>setFormData({...formData, is_half_command:e.target.checked})} /> Send 'Half' Command</label>
+                    <label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.allow_half||false} onChange={e=>setFormData({...formData, allow_half:e.target.checked})} /> Allow Half-Cup</label>
+                    {formData.allow_half && (
+                      <div style={{display:'flex', gap:6, alignItems:'center', marginTop:6}}>
+                        <span style={{color:C.muted,fontSize:11}}>Half Price:</span>
+                        <input type="number" placeholder="Paise" value={formData.half_price||0} onChange={e=>setFormData({...formData, half_price:parseInt(e.target.value)})} style={{...inp, width:60, padding:4}} />
+                      </div>
+                    )}
                   </td>
                   <td style={{padding:'11px 16px'}}><label style={{display:'flex', alignItems:'center', gap:6, color:C.cream, fontSize:12}}><input type="checkbox" checked={formData.active||false} onChange={e=>setFormData({...formData, active:e.target.checked})} /> Active</label></td>
                   <td style={{padding:'11px 16px', display:'flex', gap:6}}>
@@ -335,7 +347,7 @@ function ProductsSection() {
                     Relay {p.relay_id} <br/> {p.dispense_time_ms}ms
                   </td>
                   <td style={{padding:'11px 16px'}}>
-                    {p.is_half_command && <span style={badge('#3b82f6')}>Half Modifier</span>}
+                    {p.allow_half && <span style={badge('#3b82f6')}>Half: ₹{Math.floor((p.half_price||0)/100)}</span>}
                   </td>
                   <td style={{padding:'11px 16px'}}><span style={badge(p.active?C.green:C.red)}>{p.active?'Active':'Hidden'}</span></td>
                   <td style={{padding:'11px 16px'}}>
