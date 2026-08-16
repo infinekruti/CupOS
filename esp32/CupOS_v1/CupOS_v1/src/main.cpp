@@ -97,6 +97,18 @@ void setup()
 
 void loop()
 {
+    const unsigned long HEARTBEAT_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+    // Only send heartbeat if we are completely idle AND haven't communicated with the server in the last 5 mins
+    if (!TEST_MODE && sm.current() == CupOSState::Idle && (millis() - net.getLastCommTime() >= HEARTBEAT_INTERVAL)) {
+        diagnostics.info(ModuleID::System, "Sending 5-Min Heartbeat...");
+        if (net.sendHeartbeat()) {
+            diagnostics.info(ModuleID::System, "Heartbeat OK");
+        } else {
+            diagnostics.warning(ModuleID::System, "Heartbeat Failed");
+        }
+    }
+
     // Update core modules
     diagnostics.update();
 

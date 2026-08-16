@@ -109,7 +109,7 @@ export async function validateAndRedeemToken(params: {
 export async function getOrderTokens(orderId: string) {
   const { data, error } = await supabaseAdmin
     .from('tokens')
-    .select('id, token, status, expires_at, products(id, name, description, price)')
+    .select('id, token, status, expires_at, is_half, products(id, name, description, price)')
     .eq('order_id', orderId)
     .order('created_at', { ascending: true })
 

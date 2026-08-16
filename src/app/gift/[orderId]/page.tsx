@@ -14,6 +14,7 @@ type TokenData = {
     name: string
     price: number
   }
+  is_half?: boolean
 }
 
 const DRINK_EMOJIS: Record<string, string> = {
@@ -91,9 +92,11 @@ export default function GiftPage({ params }: { params: { orderId: string } }) {
 
   const activeToken = tokens[activeIndex]
   const activeStatus = activeToken ? pollingStatus[activeToken.id] ?? activeToken.status : null
-  const drinkName = activeToken?.products?.name ?? ''
-  const drinkEmoji = DRINK_EMOJIS[drinkName] ?? '☕'
-  const drinkAccent = DRINK_COLORS[drinkName] ?? '#6B3A2A'
+  const baseDrinkName = activeToken?.products?.name ?? ''
+  const isHalf = activeToken?.is_half ?? false
+  const drinkName = baseDrinkName + (isHalf ? ' (Half)' : '')
+  const drinkEmoji = DRINK_EMOJIS[baseDrinkName] ?? '☕'
+  const drinkAccent = DRINK_COLORS[baseDrinkName] ?? '#6B3A2A'
 
   // ── Loading ──────────────────────────────────────────────
   if (loading) {
