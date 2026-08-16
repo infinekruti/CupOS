@@ -68,7 +68,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
     fetchOrder()
 
     pollRef.current = setInterval(async () => {
-      const res = await fetch(`/api/order/${orderId}`)
+      const res = await fetch(`/api/order/${orderId}?_t=${Date.now()}`)
       const data = await res.json()
       if (data.tokens) {
         const status: Record<string, string> = {}

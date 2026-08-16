@@ -5,6 +5,8 @@ import { getOrderTokens } from '@/lib/tokens'
  * GET /api/order/[orderId]
  * Returns all tokens and products for an order (for QR page)
  */
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
