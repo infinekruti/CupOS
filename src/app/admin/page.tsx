@@ -429,12 +429,45 @@ function CustomersSection() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch('/api/admin/customers').then(r => r.json()).then(d => {
       setCustomers(d.customers ?? [])
       setLoading(false)
     })
   }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const handleCreditWallet = async (userId: string, name: string) => {
+    const input = prompt(`Enter amount in ₹ to credit to ${name}'s wallet:\n(e.g. 100 for ₹100)`)
+    if (!input) return
+    const amountInRupees = parseInt(input)
+    if (isNaN(amountInRupees) || amountInRupees <= 0) {
+      alert('Invalid amount.')
+      return
+    }
+    const amountInPaise = amountInRupees * 100
+    if (confirm(`Are you sure you want to credit ₹${amountInRupees} to ${name}?`)) {
+      try {
+        const res = await fetch('/api/admin/wallet-credit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, amount: amountInPaise })
+        })
+        const data = await res.json()
+        if (data.success) {
+          alert(`Successfully credited ₹${amountInRupees}!`)
+          load() // Reload customer list to show new balance
+        } else {
+          alert('Failed to credit wallet: ' + data.error)
+        }
+      } catch (err) {
+        alert('Error crediting wallet.')
+      }
+    }
+  }
 
   if (loading) return <p style={{color:C.muted}}>Loading customers...</p>
 
@@ -463,8 +496,9 @@ function CustomersSection() {
                   <span style={{color: C.goldL, fontWeight: 700}}>{rupee(c.wallet_balance)}</span>
                 </td>
                 <td style={{padding:'11px 16px',color:C.muted}}>{rupee(c.total_spent)}</td>
-                <td style={{padding:'11px 16px'}}>
-                  <button style={{...btnGhost, fontSize:11}}>View Orders</button>
+                <td style={{padding:'11px 16px', display:'flex', gap:8}}>
+                  <button onClick={() => handleCreditWallet(c.id, c.name)} style={{...btnGold, fontSize:11}}>Credit Wallet</button>
+                  <button style={{...btnGhost, fontSize:11}}>Orders</button>
                 </td>
               </tr>
             ))}
