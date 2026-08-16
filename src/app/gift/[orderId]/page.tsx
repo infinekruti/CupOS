@@ -142,12 +142,19 @@ export default function GiftPage({ params }: { params: { orderId: string } }) {
           <h2 style={{ color: S.cream, fontSize: 26, fontWeight: 700 }}>Gift Claimed!</h2>
           <p style={{ color: S.muted, fontSize: 14, marginTop: 8 }}>Enjoy your {drinkName}!</p>
         </div>
-        {tokens.length > 1 && activeIndex < tokens.length - 1 && (
+        {tokens.length > 1 && activeIndex < tokens.length - 1 ? (
           <button
             onClick={() => setActiveIndex(i => Math.min(i + 1, tokens.length - 1))}
             style={{ color: S.gold, fontSize: 14, background: 'none', border: `1px solid ${S.border}`, borderRadius: 12, padding: '10px 20px', cursor: 'pointer', fontFamily: S.font }}
           >
             Next item →
+          </button>
+        ) : (
+          <button
+            onClick={() => router.push('/')}
+            style={{ color: S.bg, background: S.goldLight, fontSize: 14, border: 'none', borderRadius: 12, padding: '12px 24px', cursor: 'pointer', fontWeight: 600, fontFamily: S.font, marginTop: 12 }}
+          >
+            Create your own CupOS Account!
           </button>
         )}
         <style>{`@keyframes fadeIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }`}</style>

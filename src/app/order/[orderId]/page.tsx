@@ -165,13 +165,28 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
           <h2 style={{ color: S.cream, fontSize: 26, fontWeight: 700 }}>Enjoy your {drinkName}!</h2>
           <p style={{ color: S.muted, fontSize: 14, marginTop: 8 }}>Your drink is being prepared</p>
         </div>
-        {tokens.length > 1 && activeIndex < tokens.length - 1 && (
+        {tokens.length > 1 && activeIndex < tokens.length - 1 ? (
           <button
             onClick={() => setActiveIndex(i => Math.min(i + 1, tokens.length - 1))}
             style={{ color: S.gold, fontSize: 14, background: 'none', border: `1px solid ${S.border}`, borderRadius: 12, padding: '10px 20px', cursor: 'pointer', fontFamily: S.font }}
           >
             Next item →
           </button>
+        ) : (
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+            <button
+              onClick={() => router.push('/menu')}
+              style={{ color: S.bg, background: S.gold, fontSize: 14, border: 'none', borderRadius: 12, padding: '12px 24px', cursor: 'pointer', fontWeight: 600, fontFamily: S.font }}
+            >
+              Order Again
+            </button>
+            <button
+              onClick={() => router.push('/orders')}
+              style={{ color: S.muted, background: 'none', border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 12, padding: '12px 24px', cursor: 'pointer', fontSize: 14, fontFamily: S.font }}
+            >
+              My Orders
+            </button>
+          </div>
         )}
         <style>{`@keyframes fadeIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }`}</style>
       </div>
