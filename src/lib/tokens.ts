@@ -15,7 +15,7 @@ export async function createTokensForOrder(params: {
   userId?: string
 }): Promise<{ tokens: string[]; tokenIds: string[] }> {
   const { orderId, productIds, phone, userId } = params
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+  const expiresAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000) // 10 days
 
   const rows = productIds.map((rawId) => {
     const isHalf = rawId.endsWith('_half')

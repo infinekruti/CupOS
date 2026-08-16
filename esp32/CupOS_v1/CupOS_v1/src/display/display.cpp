@@ -21,7 +21,7 @@ void DisplayManager::showMessage(const char* msg) {
     // 1. Draw Background (Dark Theme)
     _tft.fillScreen(_tft.color565(10, 10, 10)); // Deep dark grey
     
-    uint16_t brandColor = _tft.color565(186, 140, 99); // Coffee Brown
+    uint16_t brandColor = _tft.color565(200, 146, 42); // CupOS Gold (#C8922A)
     
     // 2. Draw Elegant Separator Line
     _tft.drawFastHLine(0, 48, 240, brandColor);
