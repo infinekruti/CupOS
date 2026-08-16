@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import QRCode from 'react-qr-code'
+import { useRouter } from 'next/navigation'
 
 type TokenData = {
   id: string
@@ -12,7 +12,6 @@ type TokenData = {
   products: {
     id: string
     name: string
-    description: string
     price: number
   }
 }
@@ -42,7 +41,7 @@ const S = {
   font: "'Outfit', sans-serif",
 }
 
-export default function OrderPage({ params }: { params: { orderId: string } }) {
+export default function GiftPage({ params }: { params: { orderId: string } }) {
   const { orderId } = params
   const router = useRouter()
   const [tokens, setTokens] = useState<TokenData[]>([])
@@ -52,8 +51,6 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    localStorage.setItem('cupos_last_order', orderId)
-
     async function fetchOrder() {
       const res = await fetch(`/api/order/${orderId}`)
       const data = await res.json()
@@ -98,30 +95,12 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   const drinkEmoji = DRINK_EMOJIS[drinkName] ?? '☕'
   const drinkAccent = DRINK_COLORS[drinkName] ?? '#6B3A2A'
 
-  const handleShareGift = async () => {
-    const giftUrl = `${window.location.origin}/gift/${orderId}`
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'I bought you a CupOS drink! ☕',
-          text: `Here is your QR token for a free ${drinkName} at any CupOS machine!`,
-          url: giftUrl,
-        })
-      } catch (err) {
-        console.log('Share error:', err)
-      }
-    } else {
-      navigator.clipboard.writeText(giftUrl)
-      alert('Gift link copied to clipboard! Send it to your friend.')
-    }
-  }
-
   // ── Loading ──────────────────────────────────────────────
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: S.bg, alignItems: 'center', justifyContent: 'center', gap: 16, fontFamily: S.font }}>
         <div style={{ width: 44, height: 44, border: '3px solid rgba(200,146,42,0.2)', borderTopColor: S.gold, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <p style={{ color: S.muted, fontSize: 14 }}>Loading your order...</p>
+        <p style={{ color: S.muted, fontSize: 14 }}>Opening your gift...</p>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
@@ -131,8 +110,8 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   if (tokens.length === 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: S.bg, alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 24px', gap: 16, fontFamily: S.font }}>
-        <p style={{ color: S.cream }}>Order not found.</p>
-        <button onClick={() => router.push('/menu')} style={{ color: S.gold, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontFamily: S.font }}>Go back to menu</button>
+        <p style={{ color: S.cream }}>Gift link invalid or expired.</p>
+        <button onClick={() => router.push('/')} style={{ color: S.gold, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontFamily: S.font }}>Go to cupOS Home</button>
       </div>
     )
   }
@@ -146,10 +125,8 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         padding: '0 32px', gap: 24, fontFamily: S.font,
         animation: 'fadeIn 0.4s ease-out',
       }}>
-        {/* Success ring */}
         <div style={{
-          width: 96, height: 96, borderRadius: '50%',
-          border: '3px solid #22c55e',
+          width: 96, height: 96, borderRadius: '50%', border: '3px solid #22c55e',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 0 40px rgba(34,197,94,0.3)',
         }}>
@@ -159,8 +136,8 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         </div>
         <div>
           <p style={{ fontSize: 48, marginBottom: 8 }}>{drinkEmoji}</p>
-          <h2 style={{ color: S.cream, fontSize: 26, fontWeight: 700 }}>Enjoy your {drinkName}!</h2>
-          <p style={{ color: S.muted, fontSize: 14, marginTop: 8 }}>Your drink is being prepared</p>
+          <h2 style={{ color: S.cream, fontSize: 26, fontWeight: 700 }}>Gift Claimed!</h2>
+          <p style={{ color: S.muted, fontSize: 14, marginTop: 8 }}>Enjoy your {drinkName}!</p>
         </div>
         {tokens.length > 1 && activeIndex < tokens.length - 1 && (
           <button
@@ -179,18 +156,11 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: S.bg, fontFamily: S.font }}>
 
-      {/* Header */}
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '44px 20px 8px' }}>
-        <button onClick={() => router.push('/menu')} style={{ color: S.muted, background: 'none', border: 'none', cursor: 'pointer', padding: 6 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-          </svg>
-        </button>
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '44px 20px 8px' }}>
         <span style={{ fontSize: 22, fontWeight: 800 }}>
           <span style={{ color: '#FFFFFF' }}>cup</span>
           <span style={{ background: 'linear-gradient(135deg, #E5A93C, #C8922A)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>OS</span>
         </span>
-        <div style={{ width: 34 }} />
       </header>
 
       {/* Dot pagination (multiple items) */}
@@ -203,11 +173,9 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 key={i}
                 onClick={() => setActiveIndex(i)}
                 style={{
-                  width: i === activeIndex ? 24 : 8,
-                  height: 8, borderRadius: 4,
+                  width: i === activeIndex ? 24 : 8, height: 8, borderRadius: 4,
                   background: st === 'REDEEMED' ? '#22c55e' : i === activeIndex ? S.gold : 'rgba(200,146,42,0.3)',
-                  border: 'none', cursor: 'pointer',
-                  transition: 'all 0.3s',
+                  border: 'none', cursor: 'pointer', transition: 'all 0.3s',
                 }}
               />
             )
@@ -224,120 +192,59 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
         {activeToken && (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, animation: 'fadeUp 0.35s ease-out' }}>
 
-            {/* Drink identity */}
             <div style={{ textAlign: 'center' }}>
-              {tokens.length > 1 && (
-                <p style={{ color: S.muted, fontSize: 11, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 6 }}>
-                  Item {activeIndex + 1} of {tokens.length}
-                </p>
-              )}
+              <div style={{ display: 'inline-block', background: 'rgba(200,146,42,0.15)', border: `1px solid ${S.gold}`, padding: '6px 14px', borderRadius: 20, marginBottom: 12 }}>
+                <span style={{ color: S.goldLight, fontWeight: 700, fontSize: 13 }}>🎁 YOU RECEIVED A GIFT!</span>
+              </div>
               <div style={{ fontSize: 56, marginBottom: 4 }}>{drinkEmoji}</div>
               <h2 style={{ color: S.cream, fontSize: 28, fontWeight: 700 }}>{drinkName}</h2>
-              <p style={{ color: S.muted, fontSize: 14, marginTop: 4 }}>
-                ₹{Math.floor((activeToken.products?.price ?? 0) / 100)}
-              </p>
             </div>
 
-            {/* QR card — clean, no token text */}
+            {/* QR card */}
             <div style={{ position: 'relative', width: '100%', maxWidth: 300 }}>
-              {/* Glow ring */}
               <div style={{
                 position: 'absolute', inset: -2, borderRadius: 28,
                 background: `linear-gradient(135deg, ${drinkAccent}60, rgba(200,146,42,0.4))`,
-                filter: 'blur(12px)', zIndex: 0,
-                animation: 'glowPulse 2.5s ease-in-out infinite',
+                filter: 'blur(12px)', zIndex: 0, animation: 'glowPulse 2.5s ease-in-out infinite',
               }} />
-              {/* Card */}
               <div style={{
-                position: 'relative', zIndex: 1,
-                background: 'rgba(26,20,16,0.95)',
-                border: '1px solid rgba(200,146,42,0.25)',
-                borderRadius: 24, padding: 20,
-                backdropFilter: 'blur(20px)',
+                position: 'relative', zIndex: 1, background: 'rgba(26,20,16,0.95)',
+                border: '1px solid rgba(200,146,42,0.25)', borderRadius: 24, padding: 20, backdropFilter: 'blur(20px)',
               }}>
-                {/* QR */}
                 <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'center' }}>
-                  <QRCode
-                    value={activeToken.token}
-                    size={220}
-                    style={{ width: '100%', height: 'auto' }}
-                  />
+                  <QRCode value={activeToken.token} size={220} style={{ width: '100%', height: 'auto' }} />
                 </div>
-
-                {/* Product label below QR — no token code */}
                 <div style={{ textAlign: 'center', marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <p style={{ color: S.cream, fontWeight: 700, fontSize: 16 }}>{drinkName}</p>
-                  <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>
-                    Scan at the cupOS machine
-                  </p>
+                  <p style={{ color: S.cream, fontWeight: 700, fontSize: 16 }}>Scan at machine</p>
+                  <p style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>To claim your free {drinkName}</p>
                 </div>
               </div>
             </div>
 
-            {/* Status indicator */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: S.gold, animation: 'pulse 1.5s ease-in-out infinite' }} />
               <p style={{ color: S.muted, fontSize: 13 }}>Waiting to be scanned...</p>
             </div>
 
-            {/* Gift Button */}
-            <button
-              onClick={handleShareGift}
-              style={{
-                marginTop: 10,
-                background: `linear-gradient(135deg, ${S.card}, rgba(255,255,255,0.01))`,
-                border: `1px solid ${S.border}`,
-                borderRadius: 16,
-                padding: '12px 24px',
-                color: S.goldLight,
-                fontWeight: 600,
-                fontSize: 15,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 12 20 22 4 22 4 12"></polyline>
-                <rect x="2" y="7" width="20" height="5"></rect>
-                <line x1="12" y1="22" x2="12" y2="7"></line>
-                <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
-                <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
-              </svg>
-              Gift to a Friend
-            </button>
-
             {/* Nav arrows for multiple items */}
             {tokens.length > 1 && (
               <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
                 <button
-                  onClick={() => setActiveIndex(i => Math.max(0, i - 1))}
-                  disabled={activeIndex === 0}
+                  onClick={() => setActiveIndex(i => Math.max(0, i - 1))} disabled={activeIndex === 0}
                   style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    background: S.card, border: `1px solid ${S.border}`,
-                    color: S.muted, cursor: activeIndex === 0 ? 'default' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 44, height: 44, borderRadius: '50%', background: S.card, border: `1px solid ${S.border}`,
+                    color: S.muted, cursor: activeIndex === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     opacity: activeIndex === 0 ? 0.3 : 1,
                   }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-                </button>
+                ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg></button>
                 <button
-                  onClick={() => setActiveIndex(i => Math.min(tokens.length - 1, i + 1))}
-                  disabled={activeIndex === tokens.length - 1}
+                  onClick={() => setActiveIndex(i => Math.min(tokens.length - 1, i + 1))} disabled={activeIndex === tokens.length - 1}
                   style={{
-                    width: 44, height: 44, borderRadius: '50%',
-                    background: S.card, border: `1px solid ${S.border}`,
-                    color: S.muted, cursor: activeIndex === tokens.length - 1 ? 'default' : 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 44, height: 44, borderRadius: '50%', background: S.card, border: `1px solid ${S.border}`,
+                    color: S.muted, cursor: activeIndex === tokens.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     opacity: activeIndex === tokens.length - 1 ? 0.3 : 1,
                   }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-                </button>
+                ><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg></button>
               </div>
             )}
           </div>
@@ -345,8 +252,7 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       </div>
 
       <p style={{ textAlign: 'center', fontSize: 10, paddingBottom: 20 }}>
-        <span style={{ color: '#FFFFFF' }}>cup</span>
-        <span style={{ color: 'rgba(196,185,154,0.25)' }}>OS</span>
+        <span style={{ color: '#FFFFFF' }}>cup</span><span style={{ color: 'rgba(196,185,154,0.25)' }}>OS</span>
       </p>
 
       <style>{`
