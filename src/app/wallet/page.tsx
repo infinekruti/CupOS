@@ -20,7 +20,7 @@ export default function WalletPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [balance, setBalance] = useState<number>(0)
   const [loading, setLoading] = useState(true)
-  const [topupAmount, setTopupAmount] = useState<number>(50000) // Default ₹500
+  const [topupAmount, setTopupAmount] = useState<string>('500')
   const [processing, setProcessing] = useState(false)
 
   useEffect(() => {
@@ -42,7 +42,9 @@ export default function WalletPage() {
   }
 
   const handleTopup = async () => {
-    if (!userId || processing) return
+    const amountInRupees = parseInt(topupAmount)
+    if (!userId || processing || isNaN(amountInRupees) || amountInRupees <= 0) return
+    const amountInPaise = amountInRupees * 100
     setProcessing(true)
 
     try {
@@ -50,7 +52,7 @@ export default function WalletPage() {
       const res = await fetch('/api/wallet/topup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: topupAmount, userId })
+        body: JSON.stringify({ amount: amountInPaise, userId })
       })
       const { orderId } = await res.json()
       if (!orderId) throw new Error('Order creation failed')
@@ -58,7 +60,7 @@ export default function WalletPage() {
       // 2. Open Razorpay
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: topupAmount,
+        amount: amountInPaise,
         currency: 'INR',
         name: 'CupOS Wallet',
         description: 'Add money to Wallet',
@@ -73,14 +75,14 @@ export default function WalletPage() {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
-              amount: topupAmount,
+              amount: amountInPaise,
               userId
             })
           })
           const verifyData = await verifyRes.json()
           if (verifyData.success) {
             setBalance(verifyData.newBalance)
-            setTopupAmount(50000)
+            setTopupAmount('500')
             alert('Wallet Recharge Successful!')
           } else {
             alert('Payment verification failed.')
@@ -122,17 +124,29 @@ export default function WalletPage() {
 
         {/* Topup Section */}
         <h2 style={{ color: S.cream, fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Add Money</h2>
+
+        {/* Custom Input */}
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, display: 'flex', alignItems: 'center', padding: '16px 20px', marginBottom: 12 }}>
+          <span style={{ color: S.muted, fontSize: 24, fontWeight: 600, marginRight: 8 }}>₹</span>
+          <input
+            type="number"
+            value={topupAmount}
+            onChange={(e) => setTopupAmount(e.target.value)}
+            placeholder="Enter amount"
+            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: S.cream, fontSize: 24, fontWeight: 700, fontFamily: S.font }}
+          />
+        </div>
         
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20 }}>
           {[100, 300, 500].map(amt => (
             <button
               key={amt}
-              onClick={() => setTopupAmount(amt * 100)}
+              onClick={() => setTopupAmount(amt.toString())}
               style={{
-                background: topupAmount === amt * 100 ? 'rgba(200,146,42,0.15)' : S.card,
-                border: `1px solid ${topupAmount === amt * 100 ? S.gold : S.border}`,
-                color: topupAmount === amt * 100 ? S.goldLight : S.cream,
-                padding: '16px 0', borderRadius: 16, fontWeight: 600, fontSize: 16, cursor: 'pointer', transition: 'all 0.2s'
+                background: topupAmount === amt.toString() ? 'rgba(200,146,42,0.15)' : S.card,
+                border: `1px solid ${topupAmount === amt.toString() ? S.gold : S.border}`,
+                color: topupAmount === amt.toString() ? S.goldLight : S.cream,
+                padding: '14px 0', borderRadius: 14, fontWeight: 600, fontSize: 15, cursor: 'pointer', transition: 'all 0.2s'
               }}
             >
               +₹{amt}
@@ -142,7 +156,7 @@ export default function WalletPage() {
 
         <button
           onClick={handleTopup}
-          disabled={processing || topupAmount <= 0}
+          disabled={processing || isNaN(parseInt(topupAmount)) || parseInt(topupAmount) <= 0}
           style={{
             width: '100%', background: `linear-gradient(135deg, ${S.goldLight}, ${S.gold})`,
             color: '#000', padding: '18px 0', borderRadius: 18, border: 'none',
@@ -150,7 +164,7 @@ export default function WalletPage() {
             boxShadow: '0 8px 30px rgba(200,146,42,0.3)',
           }}
         >
-          {processing ? 'Processing...' : `Proceed to Pay ₹${topupAmount / 100}`}
+          {processing ? 'Processing...' : `Proceed to Pay ₹${parseInt(topupAmount) || 0}`}
         </button>
 
       </div>
