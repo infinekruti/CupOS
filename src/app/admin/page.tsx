@@ -9,6 +9,7 @@ type Machine = { id:string; machine_code:string; machine_name:string; location:s
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
 type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; allow_half:boolean; half_price:number }
+type Customer = { id:string; name:string; email:string|null; phone:string|null; created_at:string; wallet_balance:number; total_spent:number }
 
 // ── Styles ────────────────────────────────────────────────────
 const C = { bg:'#070504', side:'#0A0806', card:'rgba(255,255,255,0.04)', border:'rgba(200,146,42,0.14)', gold:'#C8922A', goldL:'#E5A93C', cream:'#F5F0E8', muted:'#C4B99A', green:'#22c55e', red:'#ef4444', yellow:'#f59e0b', font:"'Outfit',sans-serif" }
@@ -423,6 +424,60 @@ function ProductsSection() {
   )
 }
 
+// ── Customers ──────────────────────────────────────────────────
+function CustomersSection() {
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/admin/customers').then(r => r.json()).then(d => {
+      setCustomers(d.customers ?? [])
+      setLoading(false)
+    })
+  }, [])
+
+  if (loading) return <p style={{color:C.muted}}>Loading customers...</p>
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Customer Management</h2>
+
+      <div style={{...card,padding:0,overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+          <thead><tr style={{color:C.muted}}>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>User</th>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Joined</th>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Wallet Balance</th>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Total Spent</th>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Action</th>
+          </tr></thead>
+          <tbody>
+            {customers.map(c => (
+              <tr key={c.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                <td style={{padding:'11px 16px'}}>
+                  <div style={{color:C.cream, fontWeight:600}}>{c.name}</div>
+                  <div style={{color:C.muted, fontSize:12, marginTop:2}}>{c.phone || c.email || 'No contact info'}</div>
+                </td>
+                <td style={{padding:'11px 16px',color:C.muted}}>{fmt(c.created_at)}</td>
+                <td style={{padding:'11px 16px'}}>
+                  <span style={{color: C.goldL, fontWeight: 700}}>{rupee(c.wallet_balance)}</span>
+                </td>
+                <td style={{padding:'11px 16px',color:C.muted}}>{rupee(c.total_spent)}</td>
+                <td style={{padding:'11px 16px'}}>
+                  <button style={{...btnGhost, fontSize:11}}>View Orders</button>
+                </td>
+              </tr>
+            ))}
+            {customers.length === 0 && (
+              <tr><td colSpan={5} style={{padding:'20px',textAlign:'center',color:C.muted}}>No customers found.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Admin Page ───────────────────────────────────────────
 export default function AdminPage() {
   const router = useRouter()
@@ -539,6 +594,7 @@ export default function AdminPage() {
     if (tab==='machines')     return <MachinesSection/>
     if (tab==='transactions') return <TransactionsSection/>
     if (tab==='tokens')       return <TokensSection/>
+    if (tab==='customers')    return <CustomersSection/>
     const ph = PLACEHOLDER_SECTIONS[tab]
     if (ph) return <PlaceholderSection {...ph}/>
     return null
