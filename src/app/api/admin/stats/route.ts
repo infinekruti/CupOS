@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET() {
   try {
     const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -12,11 +15,13 @@ export async function GET() {
       { data: todayTx },
       { data: monthTx },
       { data: monthTokens },
+      { data: walletCredits },
     ] = await Promise.all([
       supabaseAdmin.from('machines').select('id, status'),
       supabaseAdmin.from('transactions').select('payment_amount, user_id, phone').gte('created_at', todayISO),
       supabaseAdmin.from('transactions').select('payment_amount, user_id, phone, created_at').gte('created_at', monthISO),
       supabaseAdmin.from('tokens').select('id, is_half, created_at, status, products(name)').gte('created_at', monthISO),
+      supabaseAdmin.from('wallet_transactions').select('amount').eq('type', 'admin_credit')
     ])
 
     const onlineMachines = machines?.filter(m => m.status === 'online').length ?? 0
@@ -60,6 +65,7 @@ export async function GET() {
       revenueToday:     todayTx?.reduce((s, t) => s + t.payment_amount, 0) ?? 0,
       ordersToday:      todayTx?.length ?? 0,
       revenueMonth:     monthTx?.reduce((s, t) => s + t.payment_amount, 0) ?? 0,
+      totalWalletCredit: walletCredits?.reduce((s, t) => s + t.amount, 0) ?? 0,
       coffeeToday,
       activeCustomers:  uniqueMonthCustomers.size,
       productStats:     Object.entries(productStats).map(([name, stats]) => ({ name, ...stats })).sort((a, b) => b.total - a.total),

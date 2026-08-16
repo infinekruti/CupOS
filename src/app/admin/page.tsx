@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────
-type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number; productStats:{name:string;full:number;half:number;total:number}[]; sizeStats:{full:number;half:number}; revenueTrend:{date:string;revenue:number}[] }
+type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number; totalWalletCredit:number; productStats:{name:string;full:number;half:number;total:number}[]; sizeStats:{full:number;half:number}; revenueTrend:{date:string;revenue:number}[] }
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
@@ -71,8 +71,9 @@ function DashboardSection() {
   const [stats,setStats]=useState<Stats|null>(null)
   const [txns,setTxns]=useState<Transaction[]>([])
   useEffect(()=>{
-    fetch('/api/admin/stats').then(r=>r.json()).then(setStats)
-    fetch('/api/admin/transactions?').then(r=>r.json()).then(d=>setTxns((d.transactions??[]).slice(0,8)))
+    const t = Date.now()
+    fetch(`/api/admin/stats?_t=${t}`).then(r=>r.json()).then(setStats)
+    fetch(`/api/admin/transactions?_t=${t}`).then(r=>r.json()).then(d=>setTxns((d.transactions??[]).slice(0,8)))
   },[])
   if(!stats) return <p style={{color:C.muted}}>Loading...</p>
   return (
@@ -80,6 +81,7 @@ function DashboardSection() {
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
         <KPI label="Revenue Today"     value={rupee(stats.revenueToday)}  sub={`${stats.ordersToday} orders`} />
         <KPI label="Revenue This Month" value={rupee(stats.revenueMonth)} color={C.goldL} />
+        <KPI label="Total Given Credit" value={rupee(stats.totalWalletCredit)} color="#34d399" sub="Lifetime" />
         <KPI label="Coffee Dispensed"  value={`${stats.coffeeToday}`}     sub="today" color='#a78bfa' />
         <KPI label="Machines Online"   value={`${stats.onlineMachines}/${stats.totalMachines}`} color={stats.onlineMachines>0?C.green:C.red} sub={`${stats.offlineMachines} offline`} />
         <KPI label="Active Customers"  value={`${stats.activeCustomers}`} sub="this month" color='#60a5fa' />
