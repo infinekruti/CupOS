@@ -430,7 +430,7 @@ function CustomersSection() {
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
-    fetch('/api/admin/customers').then(r => r.json()).then(d => {
+    fetch(`/api/admin/customers?_t=${Date.now()}`).then(r => r.json()).then(d => {
       setCustomers(d.customers ?? [])
       setLoading(false)
     })
