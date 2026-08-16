@@ -126,6 +126,21 @@ export default function MenuPage() {
         </span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Wallet */}
+          <button
+            onClick={() => router.push('/wallet')}
+            title="My Wallet"
+            style={{
+              background: 'rgba(255,255,255,0.05)', border: `1px solid ${S.border}`,
+              borderRadius: 10, padding: '8px 10px', color: S.muted,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+            </svg>
+          </button>
+
           {/* My Orders */}
           <button
             id="my-orders-btn"

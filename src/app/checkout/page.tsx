@@ -44,13 +44,19 @@ export default function CheckoutPage() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [productIds, setProductIds] = useState<string[]>([])
   const [userId, setUserId] = useState<string | null>(null)
+  const [walletBalance, setWalletBalance] = useState(0)
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<'idle' | 'paying' | 'verifying' | 'error'>('idle')
 
   useEffect(() => {
     // Get auth session
     supabase.auth.getSession().then(({ data }) => {
-      setUserId(data.session?.user?.id ?? null)
+      if (data.session?.user) {
+        setUserId(data.session.user.id)
+        fetch(`/api/wallet/balance?userId=${data.session.user.id}`)
+          .then(r => r.json())
+          .then(d => setWalletBalance(d.balance || 0))
+      }
     })
 
     const savedPhone = localStorage.getItem('cupos_phone')
@@ -132,6 +138,30 @@ export default function CheckoutPage() {
         },
       })
       rzp.open()
+    } catch {
+      setStep('error')
+      setLoading(false)
+    }
+  }
+
+  const handleWalletPay = async () => {
+    setLoading(true)
+    setStep('paying')
+    try {
+      const res = await fetch('/api/wallet/pay', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds, phone: phone || undefined, amount: total, userId }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        sessionStorage.removeItem('cupos_cart')
+        sessionStorage.removeItem('cupos_cart_meta')
+        if (phone) localStorage.setItem('cupos_phone', phone)
+        router.push(`/order/${data.orderId}`)
+      } else {
+        setStep('error')
+        setLoading(false)
+      }
     } catch {
       setStep('error')
       setLoading(false)
@@ -232,25 +262,47 @@ export default function CheckoutPage() {
           <div style={{ flex: 1 }} />
 
           {/* Pay button */}
-          <button
-            id="pay-btn"
-            onClick={handlePay}
-            disabled={loading || cartItems.length === 0}
-            style={{
-              width: '100%',
-              background: 'linear-gradient(135deg, #E5A93C, #C8922A)',
-              color: '#0D0A08', fontWeight: 700, fontSize: 17,
-              padding: '18px 0', borderRadius: 18, border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              boxShadow: '0 8px 40px rgba(200,146,42,0.45)', marginBottom: 28,
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <rect x="2" y="5" width="20" height="14" rx="3"/><line x1="2" y1="10" x2="22" y2="10"/>
-            </svg>
-            Pay ₹{Math.floor(total / 100)} via UPI
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
+            {walletBalance >= total && (
+              <button
+                onClick={handleWalletPay}
+                disabled={loading || cartItems.length === 0}
+                style={{
+                  width: '100%',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: S.goldLight, fontWeight: 700, fontSize: 17,
+                  padding: '18px 0', borderRadius: 18, border: `1px solid ${S.border}`, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                  opacity: loading ? 0.6 : 1,
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                  <rect x="2" y="5" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                </svg>
+                Pay via Wallet (₹{Math.floor(total / 100)})
+              </button>
+            )}
+
+            <button
+              id="pay-btn"
+              onClick={handlePay}
+              disabled={loading || cartItems.length === 0}
+              style={{
+                width: '100%',
+                background: 'linear-gradient(135deg, #E5A93C, #C8922A)',
+                color: '#0D0A08', fontWeight: 700, fontSize: 17,
+                padding: '18px 0', borderRadius: 18, border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                boxShadow: '0 8px 40px rgba(200,146,42,0.45)',
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                <rect x="2" y="5" width="20" height="14" rx="3"/><line x1="2" y1="10" x2="22" y2="10"/>
+              </svg>
+              Pay ₹{Math.floor(total / 100)} via UPI
+            </button>
+          </div>
         </div>
       )}
 

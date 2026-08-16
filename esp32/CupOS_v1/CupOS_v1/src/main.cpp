@@ -14,6 +14,8 @@
 #include "storage/storage.h"
 #include "shutter/shutter.h"
 #include <esp_task_wdt.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 extern HardwareSerial SerialAT;
 
@@ -28,6 +30,11 @@ bool TEST_MODE = false;
 
 void setup()
 {
+    // DISABLE BROWNOUT DETECTOR
+    // Prevents the ESP32 from rebooting if the 5V rail temporarily dips due to
+    // the sudden inrush current of the DC motors or 4G modem.
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
     Serial.begin(DEBUG_BAUDRATE);
     
     // Enable Watchdog Timer (60 seconds timeout to cover GSM latency)

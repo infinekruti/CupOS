@@ -112,6 +112,15 @@ void StateMachine::update() {
             break;
 
         case CupOSState::CupDispense:
+            // POWER SPIKE MITIGATION: Wait 1.5 seconds for the 4G Modem to fully 
+            // shut down its radio transmission before firing the high-current cup motor.
+            {
+                uint32_t waitStart = millis();
+                while (millis() - waitStart < 1500) {
+                    esp_task_wdt_reset();
+                    delay(10);
+                }
+            }
             if (!_engine->dispenseCup()) {
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
