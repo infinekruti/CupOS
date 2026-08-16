@@ -537,8 +537,14 @@ export default function AdminPage() {
       // No session and not wildcard → redirect to login
       if (!user) { router.push('/'); return }
 
-      // Check specific email
-      if (user.email === allowed || user.phone === allowed) {
+      // Check specific email or phone against comma-separated list
+      const allowedList = allowed.split(',').map(s => s.trim())
+      
+      const hasAccess = 
+        (user.email && allowedList.includes(user.email)) || 
+        (user.phone && allowedList.includes(user.phone))
+
+      if (hasAccess) {
         setAdminEmail(user.email || user.phone || 'Admin')
         setReady(true)
       } else {
