@@ -94,7 +94,10 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
   }
 
   const activeToken = tokens[activeIndex]
-  const activeStatus = activeToken ? pollingStatus[activeToken.id] ?? activeToken.status : null
+  let activeStatus = activeToken ? pollingStatus[activeToken.id] ?? activeToken.status : null
+  if (activeStatus === 'UNUSED' && activeToken?.expires_at && new Date(activeToken.expires_at) < new Date()) {
+    activeStatus = 'EXPIRED'
+  }
   const baseDrinkName = activeToken?.products?.name ?? ''
   const isHalf = activeToken?.is_half ?? false
   const drinkName = baseDrinkName + (isHalf ? ' (Half)' : '')
@@ -136,6 +139,42 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: S.bg, alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 24px', gap: 16, fontFamily: S.font }}>
         <p style={{ color: S.cream }}>Order not found.</p>
         <button onClick={() => router.push('/menu')} style={{ color: S.gold, textDecoration: 'underline', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontFamily: S.font }}>Go back to menu</button>
+      </div>
+    )
+  }
+
+  // ── EXPIRED ──────────────────────────────────────────────
+  if (activeStatus === 'EXPIRED') {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: S.bg,
+        alignItems: 'center', justifyContent: 'center', textAlign: 'center',
+        padding: '0 32px', gap: 24, fontFamily: S.font,
+        animation: 'fadeIn 0.4s ease-out',
+      }}>
+        <div style={{
+          width: 96, height: 96, borderRadius: '50%',
+          border: '3px solid #6b7280',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div>
+          <p style={{ fontSize: 48, marginBottom: 8 }}>{drinkEmoji}</p>
+          <h2 style={{ color: '#6b7280', fontSize: 26, fontWeight: 700 }}>Token Expired</h2>
+          <p style={{ color: S.muted, fontSize: 14, marginTop: 8 }}>This order is no longer valid.</p>
+        </div>
+        <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+          <button
+            onClick={() => router.push('/menu')}
+            style={{ color: S.bg, background: S.gold, fontSize: 14, border: 'none', borderRadius: 12, padding: '12px 24px', cursor: 'pointer', fontWeight: 600, fontFamily: S.font }}
+          >
+            Order New Drink
+          </button>
+        </div>
+        <style>{`@keyframes fadeIn { from{opacity:0;transform:scale(0.95)} to{opacity:1;transform:scale(1)} }`}</style>
       </div>
     )
   }

@@ -159,10 +159,16 @@ export default function OrdersPage() {
       {/* Order list */}
       <div style={{ padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {orders.map(order => {
+          const processedTokens = order.tokens.map(t => {
+            if (t.status === 'UNUSED' && new Date(t.expires_at) < new Date()) {
+              return { ...t, status: 'EXPIRED' as const }
+            }
+            return t
+          })
           const isExpanded = expandedOrder === order.orderId
-          const unusedCount = order.tokens.filter(t => t.status === 'UNUSED').length
-          const redeemedCount = order.tokens.filter(t => t.status === 'REDEEMED').length
-          const totalItems = order.tokens.length
+          const unusedCount = processedTokens.filter(t => t.status === 'UNUSED').length
+          const redeemedCount = processedTokens.filter(t => t.status === 'REDEEMED').length
+          const totalItems = processedTokens.length
 
           return (
             <div
@@ -224,7 +230,7 @@ export default function OrdersPage() {
               {/* Expanded: drink list with status */}
               {isExpanded && (
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', padding: '8px 0 4px' }}>
-                  {order.tokens.map((tok, idx) => {
+                  {processedTokens.map((tok, idx) => {
                     const cfg = STATUS_CONFIG[tok.status] ?? STATUS_CONFIG.UNUSED
                     const name = tok.products?.name ?? 'Drink'
                     return (
