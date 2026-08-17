@@ -8,10 +8,15 @@ import { supabaseAdmin } from '@/lib/supabase'
  */
 export async function POST(req: NextRequest) {
   try {
-    const { machineId } = await req.json()
+    const { machineId, secret } = await req.json()
 
     if (!machineId) {
       return NextResponse.json({ error: 'Missing machineId' }, { status: 400 })
+    }
+
+    const EXPECTED_SECRET = process.env.MACHINE_SECRET_KEY || 'CupOS_SuperSecret_123';
+    if (secret !== EXPECTED_SECRET) {
+      return NextResponse.json({ error: 'Unauthorized Hardware' }, { status: 401 })
     }
 
     const { error } = await supabaseAdmin
