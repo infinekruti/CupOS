@@ -43,10 +43,15 @@ export async function POST(req: NextRequest) {
 
     // Calculate total in paise (Razorpay requires smallest currency unit)
     // If prices are stored as rupees instead of paise, multiply by 100
+    console.log('[create-order] productIds received:', productIds)
+    console.log('[create-order] qtyMap keys:', Object.keys(qtyMap))
+    console.log('[create-order] products found:', products.map(p => ({ id: p.id, name: p.name, price: p.price })))
     let totalAmount = products.reduce((sum, p) => {
       const q = qtyMap[p.id] || { full: 0, half: 0 }
+      console.log(`[create-order] product ${p.name}: price=${p.price}, q=`, q)
       return sum + (p.price * q.full) + ((p.half_price || 0) * q.half)
     }, 0)
+    console.log('[create-order] totalAmount before safety:', totalAmount)
 
     // Safety: if total < 100, prices are likely stored in rupees — convert to paise
     if (totalAmount > 0 && totalAmount < 100) {
