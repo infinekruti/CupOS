@@ -101,17 +101,26 @@ void StateMachine::update() {
                     _state = CupOSState::Collect;
                     _stateStartMs = millis();
                     diagnostics.info(ModuleID::System, "[SM] Clearing abandoned cup");
-                    displayManager.showMessage("Please clear old cup!");
+                    displayManager.showMessage("Please clear\nold cup!");
                 } else {
                     _state = CupOSState::CupDispense;
                     _stateStartMs = millis();
                     diagnostics.info(ModuleID::System, "[SM] CupDispense (order received)");
-                    displayManager.showMessage("Order Received!");
+                    displayManager.showMessage("Order\nReceived!");
                 }
             }
             break;
 
         case CupOSState::CupDispense:
+            // SAFETY: Guarantee the door is fully shut before anything drops!
+            if (!_engine->closeShutter()) {
+                _state = CupOSState::Error;
+                _stateStartMs = millis();
+                displayManager.showMessage("Out of Order (Door)");
+                _engine->playSound("/error_jam.wav");
+                break;
+            }
+
             // POWER SPIKE MITIGATION: Wait 1.5 seconds for the 4G Modem to fully 
             // shut down its radio transmission before firing the high-current cup motor.
             {
@@ -124,7 +133,7 @@ void StateMachine::update() {
             if (!_engine->dispenseCup()) {
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
-                displayManager.showMessage("Out of Order (Cup)");
+                displayManager.showMessage("Out of Order\n(Cup Error)");
                 _engine->playSound("/error_jam.wav"); // Play sound alert
             } else {
                 _state = CupOSState::BeveragePrep;
@@ -143,15 +152,7 @@ void StateMachine::update() {
             _engine->playSound("/CupOS.wav");
             Serial.println(">>> [SM] playSound returned, entering update loop <<<");
             
-            // Wait 5 seconds into the song before opening the door
-            {
-                uint32_t waitStart = millis();
-                while (millis() - waitStart < 5000) {
-                    esp_task_wdt_reset();
-                    audioPlayer.update(); // Keep streaming music during the delay!
-                    delay(1); // Tiny delay to prevent tight-loop WDT issues
-                }
-            }
+            // Removed the 5-second delay so the door opens simultaneously with the music!
             
             _state = CupOSState::ShutterOpen;
             _stateStartMs = millis();
@@ -168,6 +169,8 @@ void StateMachine::update() {
             } else {
                 _state = CupOSState::Ready;
                 _stateStartMs = millis();
+                _warningPlayed = false; // Reset warning flag
+                _cupRemovedMs = 0;      // Reset cup removal tracker
                 diagnostics.info(ModuleID::System, "[SM] Ready (Drink available)");
                 // No screen update here to prevent SPI collision with audio
             }
@@ -176,14 +179,24 @@ void StateMachine::update() {
         case CupOSState::Ready:
             // SAFETY LOGIC: Wait until the user physically removes the cup, OR timeout after 30 seconds
             if (!_engine->isCupPresent()) {
-                _state = CupOSState::ShutterClose;
-                _stateStartMs = millis();
-                diagnostics.info(ModuleID::System, "[SM] ShutterClose");
-                displayManager.showMessage("Closing Door...");
+                if (_cupRemovedMs == 0) {
+                    _cupRemovedMs = millis(); // Start the removal delay timer
+                } else if (millis() - _cupRemovedMs >= 2000) {
+                    // Cup has been gone for a solid 2 seconds, safe to close!
+                    _state = CupOSState::ShutterClose;
+                    _stateStartMs = millis();
+                    diagnostics.info(ModuleID::System, "[SM] ShutterClose");
+                    displayManager.showMessage("Closing Door...");
+                }
+            } else if (elapsed(20000) && !_warningPlayed) {
+                _cupRemovedMs = 0; // Reset timer if cup is put back or sensor flickers
+                // At 20 seconds, play the warning audio (non-blocking)
+                diagnostics.warning(ModuleID::System, "[SM] Drink abandoned warning!");
+                _engine->playSound("/remove_cup.wav"); // Play alert for forgotten drink
+                _warningPlayed = true;
             } else if (elapsed(30000)) {
-                diagnostics.warning(ModuleID::System, "[SM] Drink abandoned!");
-                _engine->playSound("/error_jam.wav"); // Play alert for forgotten drink
-                _state = CupOSState::ShutterClose;
+                // At 30 seconds (10 seconds after warning), forcefully close the door
+                _state = CupOSState::ShutterCloseAbandoned;
                 _stateStartMs = millis();
                 displayManager.showMessage("Closing Door...");
             }
@@ -196,9 +209,25 @@ void StateMachine::update() {
                 displayManager.showMessage("Out of Order (Door)");
                 _engine->playSound("/error_jam.wav"); // Play sound alert
             } else {
+                _engine->playSound("/thank_you.wav"); // Play final thank you message
                 _state = CupOSState::Idle;
                 _stateStartMs = millis();
                 diagnostics.info(ModuleID::System, "[SM] Idle (Ready for next)");
+                displayManager.showIdleScreen("https://cupos.in");
+            }
+            break;
+
+        case CupOSState::ShutterCloseAbandoned:
+            if (!_engine->closeShutter()) {
+                _state = CupOSState::Error;
+                _stateStartMs = millis();
+                displayManager.showMessage("Out of Order (Door)");
+                _engine->playSound("/error_jam.wav");
+            } else {
+                // NO thank you message here!
+                _state = CupOSState::Idle;
+                _stateStartMs = millis();
+                diagnostics.info(ModuleID::System, "[SM] Idle (Cup abandoned inside)");
                 displayManager.showIdleScreen("https://cupos.in");
             }
             break;
@@ -218,15 +247,15 @@ void StateMachine::update() {
             } else {
                 _state = CupOSState::AwaitOrder;
                 _stateStartMs = millis();
-                displayManager.showMessage("Please remove old cup!");
-                _engine->playSound("/error_jam.wav"); // Alert user to remove cup
+                displayManager.showMessage("Please remove\nold cup!");
+                _engine->playSound("/remove_cup.wav"); // Alert user to remove cup
             }
             break;
 
         case CupOSState::AwaitOrder:
             if (!_engine->isCupPresent()) {
                 // Cup was successfully removed!
-                displayManager.showMessage("Thank you! Starting order...");
+                displayManager.showMessage("Thank you!\nStarting order...");
                 if (!_engine->closeShutter()) {
                     _state = CupOSState::Error;
                     _stateStartMs = millis();

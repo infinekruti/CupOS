@@ -11,7 +11,8 @@ void DisplayManager::begin() {
     _tft.setRotation(2); // portait
     _tft.fillScreen(ILI9341_BLACK);
     _tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-    _tft.setTextSize(2);
+    _tft.setTextSize(2); // Set back to large size for 2.4 inch screen readability!
+    _tft.setTextWrap(false); // We handle our own newlines!
     
     showMessage("Booting CupOS...");
     diagnostics.info(ModuleID::System, "Display Initialized");
@@ -60,12 +61,25 @@ void DisplayManager::showMessage(const char* msg) {
         String line = s.substring(start, newline);
         
         if (line.length() > 0) {
-            uint16_t line_w;
+            int16_t x1, y1;
+            uint16_t line_w, h;
+            // First measure at size 2 (large)
+            _tft.setTextSize(2);
             _tft.getTextBounds(line.c_str(), 0, 0, &x1, &y1, &line_w, &h);
-            _tft.setCursor((240 - line_w) / 2, y);
+            
+            // If too wide for the screen, automatically drop to size 1 for this line
+            if ((int)line_w - x1 > 228) {
+                _tft.setTextSize(1);
+                _tft.getTextBounds(line.c_str(), 0, 0, &x1, &y1, &line_w, &h);
+            }
+            
+            int cursor_x = (240 - (int)line_w) / 2 - x1;
+            if (cursor_x < 0) cursor_x = 0;
+            _tft.setCursor(cursor_x, y);
             _tft.print(line);
         }
-        y += 28; // Line spacing
+        _tft.setTextSize(2); // Reset to large for next line
+        y += 40; // Increased line spacing to 40px to fit the 2x scaled font!
         start = newline + 1;
     }
 }
@@ -132,11 +146,23 @@ void DisplayManager::updateStatus(const char* msg) {
         if (line.length() > 0) {
             int16_t x1, y1;
             uint16_t w, h;
+            // First measure at size 2 (large)
+            _tft.setTextSize(2);
             _tft.getTextBounds(line.c_str(), 0, 0, &x1, &y1, &w, &h);
-            _tft.setCursor((240 - w) / 2, y);
+            
+            // If too wide for the screen, automatically drop to size 1 for this line
+            if ((int)w - x1 > 228) {
+                _tft.setTextSize(1);
+                _tft.getTextBounds(line.c_str(), 0, 0, &x1, &y1, &w, &h);
+            }
+            
+            int cursor_x = (240 - (int)w) / 2 - x1;
+            if (cursor_x < 0) cursor_x = 0;
+            _tft.setCursor(cursor_x, y);
             _tft.print(line);
         }
-        y += 28; // Line spacing
+        _tft.setTextSize(2); // Reset to large for next line
+        y += 40; // Increased line spacing to fit the 2x scaled font!
         start = newline + 1;
     }
 }

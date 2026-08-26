@@ -13,6 +13,7 @@ enum class CupOSState {
     ShutterOpen,
     BeveragePrep,
     ShutterClose,
+    ShutterCloseAbandoned,
     Ready,
     Collect,
     Error
@@ -35,5 +36,7 @@ private:
     uint16_t _dispenseMs = 0;
     String _productName = "";
     bool _isHalf = false;
+    bool _warningPlayed = false;
+    uint32_t _cupRemovedMs = 0;
     bool processQR();
 };

@@ -54,6 +54,7 @@ void Network::begin() {
 }
 
 bool Network::verifyOrder(const String& qrPayload, uint8_t& productId, uint16_t& durationMs, String& productName, bool& isHalf, String& failReason) {
+    String requestBody = "{\"machineId\":\"" + String(MACHINE_ID) + "\",\"secret\":\"" + String(MACHINE_SECRET_KEY) + "\",\"token\":\"" + qrPayload + "\"}";
     failReason = "Unknown Error";
     Serial.println(">>> [verifyOrder] Started! <<<");
     diagnostics.info(ModuleID::System, "Verifying Token via 4G...");
@@ -71,14 +72,6 @@ bool Network::verifyOrder(const String& qrPayload, uint8_t& productId, uint16_t&
     Serial.println(">>> [verifyOrder] Opening Network Socket Multiplexer... <<<");
     modem.sendAT(GF("+NETOPEN"));
     modem.waitResponse(10000L); // Wait up to 10s for the network to open
-
-    // Build JSON request payload
-    JsonDocument doc;
-    doc["machineId"] = MACHINE_ID; // "CUP_001" from config.h
-    doc["token"] = qrPayload;
-    
-    String requestBody;
-    serializeJson(doc, requestBody);
 
     Serial.println(">>> [verifyOrder] Request Payload Built. Using Native HTTPS POST... <<<");
     diagnostics.info(ModuleID::System, (String("POST /api/validate-token ") + requestBody).c_str());
@@ -306,10 +299,7 @@ bool Network::sendHeartbeat() {
         return resp;
     };
 
-    JsonDocument doc;
-    doc["machineId"] = MACHINE_ID;
-    String requestBody;
-    serializeJson(doc, requestBody);
+    String requestBody = "{\"machineId\":\"" + String(MACHINE_ID) + "\",\"secret\":\"" + String(MACHINE_SECRET_KEY) + "\"}";
 
     sendRawAT("AT+HTTPTERM");
     sendRawAT("AT+CSSLCFG=\"ignoreretc\",0,1");
@@ -320,7 +310,7 @@ bool Network::sendHeartbeat() {
     }
 
     sendRawAT("AT+HTTPPARA=\"SSLCFG\",0");
-    String url = String("https://") + "cupos.in" + "/api/heartbeat";
+    String url = String("https://") + _host + "/api/heartbeat";
     sendRawAT("AT+HTTPPARA=\"URL\",\"" + url + "\"");
     sendRawAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
     

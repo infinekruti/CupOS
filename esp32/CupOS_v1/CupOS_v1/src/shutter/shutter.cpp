@@ -105,6 +105,7 @@ bool ShutterManager::close() {
             success = true;
             break;
         }
+        audioPlayer.update(); // Keep music alive while motor turns
         delay(10);
     }
     stop();
@@ -136,6 +137,7 @@ bool ShutterManager::close() {
             success = true;
             break;
         }
+        audioPlayer.update(); // Keep music alive
         delay(10);
     }
     stop();

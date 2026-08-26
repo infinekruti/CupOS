@@ -52,6 +52,7 @@ void setup()
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
 
     // Initialize display, cup, audio, storage, shutter
+    // TFT must initialize FIRST, otherwise the GFX library can reset the SPI bus!
     displayManager.begin();
     cupDispenser.begin();
     audioPlayer.begin();

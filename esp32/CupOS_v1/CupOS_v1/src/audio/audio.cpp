@@ -16,8 +16,20 @@ void AudioPlayer::play(const char* filename) {
 
     _audioFile = SD.open(filename);
     if (!_audioFile) {
-        diagnostics.error(ModuleID::System, (String("Audio file not found: ") + filename).c_str());
-        return;
+        // AUTO-RECOVERY: The GSM modem's 4G transmission spike often causes a tiny voltage drop
+        // that secretly resets the physical SD card. The ESP32 doesn't know it reset.
+        // We will force a re-mount on the fly and try one more time!
+        Serial.println("[Audio] SD Read Failed. Attempting Auto-Recovery Re-mount...");
+        SD.end();
+        delay(100);
+        if (SD.begin(13, SPI, 4000000)) {
+            _audioFile = SD.open(filename);
+        }
+        
+        if (!_audioFile) {
+            diagnostics.error(ModuleID::System, (String("Audio file not found or SD crashed: ") + filename).c_str());
+            return;
+        }
     }
 
     // --- Parse WAV header ---
@@ -82,22 +94,21 @@ void AudioPlayer::play(const char* filename) {
 void AudioPlayer::update() {
     if (!_isPlaying) return;
 
-    // Pump audio data into the I2S DMA buffer
-    // Use a BLOCKING write with a short timeout so the DMA always stays fed
-    while (_audioFile.available()) {
+    // Time-bounded audio pump: process audio for max 8ms per call.
+    // This guarantees update() ALWAYS returns quickly so the shutter motor
+    // is never blocked, while still keeping the I2S DMA buffer topped up.
+    uint32_t callStart = millis();
+    while (_audioFile.available() && (millis() - callStart) < 8) {
         uint8_t buf[1024];
         int bytes_read = _audioFile.read(buf, sizeof(buf));
-        if (bytes_read > 0) {
-            size_t bytes_written = 0;
-            // Block for up to 100ms waiting for DMA space — this guarantees the buffer stays full
-            i2s_write(I2S_NUM_0, buf, bytes_read, &bytes_written, pdMS_TO_TICKS(100));
+        if (bytes_read <= 0) break;
 
-            if (bytes_written < (size_t)bytes_read) {
-                // DMA buffer is still full after waiting, rewind and come back later
-                _audioFile.seek(_audioFile.position() - (bytes_read - bytes_written));
-                return; // Exit and come back on next loop() call
-            }
-        } else {
+        size_t bytes_written = 0;
+        i2s_write(I2S_NUM_0, buf, bytes_read, &bytes_written, pdMS_TO_TICKS(5));
+
+        if (bytes_written < (size_t)bytes_read) {
+            // DMA buffer full — rewind unwritten bytes and exit
+            _audioFile.seek(_audioFile.position() - (bytes_read - bytes_written));
             break;
         }
     }

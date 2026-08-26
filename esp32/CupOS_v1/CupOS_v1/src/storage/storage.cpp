@@ -3,10 +3,13 @@
 #include "../diagnostics/diagnostics.h"
 
 StorageManager storage;
-
 void StorageManager::begin() {
     // Exactly match the user's working code sequence
     delay(500);
+    // Full SPI bus reset: TFT display leaves the bus in its own state.
+    // We must tear it down completely and bring it back fresh for the SD card.
+    SPI.end();
+    delay(20);
     SPI.begin(18, 19, 23); // Force exact pins 18, 19, 23
     delay(100);
     
@@ -14,6 +17,8 @@ void StorageManager::begin() {
     bool mounted = false;
     for (int attempt = 1; attempt <= 3; attempt++) {
         Serial.printf("SD Mount attempt %d/3...\n", attempt);
+        // Use default SPI instance — do NOT pass the shared SPI bus object.
+        // Passing SPI explicitly causes bus contention with the TFT display and breaks the mount!
         if (SD.begin(13)) {
             mounted = true;
             break;
