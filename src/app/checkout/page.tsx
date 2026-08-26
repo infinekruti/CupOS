@@ -102,7 +102,7 @@ export default function CheckoutPage() {
       const orderData = await orderRes.json()
 
       const rzp = new window.Razorpay({
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!,
+        key: 'rzp_live_TUYkUUvXm46yrt', // Live key hardcoded to bypass Vercel build cache
         amount: orderData.amount, currency: 'INR',
         name: 'cupOS',
         description: cartItems.map(i => `${i.qty}× ${i.name}`).join(', '),

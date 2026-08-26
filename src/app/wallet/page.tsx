@@ -59,7 +59,7 @@ export default function WalletPage() {
 
       // 2. Open Razorpay
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: 'rzp_live_TUYkUUvXm46yrt', // Live key hardcoded to bypass Vercel build cache
         amount: amountInPaise,
         currency: 'INR',
         name: 'CupOS Wallet',
