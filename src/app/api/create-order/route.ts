@@ -41,11 +41,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Products not found' }, { status: 404 })
     }
 
-    // Calculate total respecting quantities and sizes (prices are in paise)
-    const totalAmount = products.reduce((sum, p) => {
+    // Calculate total in paise (Razorpay requires smallest currency unit)
+    // If prices are stored as rupees instead of paise, multiply by 100
+    let totalAmount = products.reduce((sum, p) => {
       const q = qtyMap[p.id] || { full: 0, half: 0 }
       return sum + (p.price * q.full) + ((p.half_price || 0) * q.half)
     }, 0)
+
+    // Safety: if total < 100, prices are likely stored in rupees — convert to paise
+    if (totalAmount > 0 && totalAmount < 100) {
+      totalAmount = totalAmount * 100
+    }
+
+    // Enforce Razorpay minimum (₹1 = 100 paise)
+    if (totalAmount < 100) totalAmount = 100
 
     // Create Razorpay order
     const order = await razorpay.orders.create({
