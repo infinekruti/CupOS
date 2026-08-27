@@ -17,13 +17,11 @@ const S = {
   font: "'Outfit', sans-serif",
 }
 
-type AuthStep = 'main' | 'phone-input' | 'otp-input'
+type AuthStep = 'main'
 
 export default function LoginPage() {
   const router = useRouter()
   const [step, setStep] = useState<AuthStep>('main')
-  const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -36,33 +34,6 @@ export default function LoginPage() {
       options: { redirectTo: `${window.location.origin}/menu` },
     })
     if (error) { setError(error.message); setLoading(false) }
-  }
-
-  // ── Phone: send OTP ───────────────────────────
-  const handleSendOtp = async () => {
-    if (phone.length < 10) { setError('Enter a valid 10-digit number'); return }
-    setLoading(true)
-    setError('')
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: `+91${phone}`,
-    })
-    if (error) { setError(error.message); setLoading(false); return }
-    setLoading(false)
-    setStep('otp-input')
-  }
-
-  // ── Phone: verify OTP ─────────────────────────
-  const handleVerifyOtp = async () => {
-    if (otp.length < 4) { setError('Enter the OTP sent to your phone'); return }
-    setLoading(true)
-    setError('')
-    const { error } = await supabase.auth.verifyOtp({
-      phone: `+91${phone}`,
-      token: otp,
-      type: 'sms',
-    })
-    if (error) { setError(error.message); setLoading(false); return }
-    router.push('/menu')
   }
 
   // ── Guest ─────────────────────────────────────
@@ -112,7 +83,6 @@ export default function LoginPage() {
       }}>
 
         {/* ── MAIN STEP ── */}
-        {step === 'main' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <p style={{ color: S.muted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 2, textAlign: 'center', marginBottom: 4 }}>
               Sign in to continue
@@ -142,33 +112,6 @@ export default function LoginPage() {
               Continue with Google
             </button>
 
-            {/* Divider */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0' }}>
-              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
-              <span style={{ color: S.subtle, fontSize: 12 }}>or</span>
-              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
-            </div>
-
-            {/* Phone */}
-            <button
-              id="phone-login-btn"
-              onClick={() => { setStep('phone-input'); setError('') }}
-              style={{
-                width: '100%', padding: '15px 20px', borderRadius: 16,
-                background: 'rgba(255,255,255,0.05)',
-                border: `1px solid ${S.border}`,
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
-                fontFamily: S.font, fontWeight: 600, fontSize: 15, color: S.cream,
-                transition: 'all 0.2s',
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={S.gold} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
-              </svg>
-              Continue with Phone
-            </button>
-
             {/* Guest */}
             <button
               id="guest-btn"
@@ -186,126 +129,8 @@ export default function LoginPage() {
               <p style={{ color: '#ff6b6b', fontSize: 13, textAlign: 'center' }}>{error}</p>
             )}
           </div>
-        )}
 
-        {/* ── PHONE INPUT STEP ── */}
-        {step === 'phone-input' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <button
-              onClick={() => { setStep('main'); setError('') }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: S.muted, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontFamily: S.font, padding: 0, marginBottom: 4 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-              Back
-            </button>
 
-            <div>
-              <p style={{ color: S.cream, fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Enter your number</p>
-              <p style={{ color: S.muted, fontSize: 13 }}>We'll send a 6-digit OTP via SMS</p>
-            </div>
-
-            <div style={{
-              background: 'rgba(255,255,255,0.04)', border: `1px solid ${S.border}`,
-              borderRadius: 14, display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 10,
-            }}>
-              <span style={{ color: S.muted, fontSize: 15, fontWeight: 600 }}>+91</span>
-              <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)' }} />
-              <input
-                id="phone-number-input"
-                type="tel"
-                placeholder="10-digit mobile number"
-                value={phone}
-                onChange={e => { setPhone(e.target.value.replace(/\D/g, '').slice(0, 10)); setError('') }}
-                autoFocus
-                style={{
-                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  color: S.cream, fontSize: 16, fontFamily: S.font, letterSpacing: 1,
-                }}
-              />
-            </div>
-
-            {error && <p style={{ color: '#ff6b6b', fontSize: 13 }}>{error}</p>}
-
-            <button
-              id="send-otp-btn"
-              onClick={handleSendOtp}
-              disabled={loading || phone.length < 10}
-              style={{
-                width: '100%', padding: '15px 0', borderRadius: 16,
-                background: 'linear-gradient(135deg, #E5A93C, #C8922A)',
-                border: 'none', cursor: phone.length >= 10 ? 'pointer' : 'not-allowed',
-                fontFamily: S.font, fontWeight: 700, fontSize: 16, color: '#0D0A08',
-                opacity: (loading || phone.length < 10) ? 0.6 : 1,
-                boxShadow: '0 8px 32px rgba(200,146,42,0.35)',
-              }}
-            >
-              {loading ? 'Sending...' : 'Send OTP'}
-            </button>
-          </div>
-        )}
-
-        {/* ── OTP INPUT STEP ── */}
-        {step === 'otp-input' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <button
-              onClick={() => { setStep('phone-input'); setOtp(''); setError('') }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: S.muted, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontFamily: S.font, padding: 0, marginBottom: 4 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-              Back
-            </button>
-
-            <div>
-              <p style={{ color: S.cream, fontWeight: 700, fontSize: 20, marginBottom: 4 }}>Enter OTP</p>
-              <p style={{ color: S.muted, fontSize: 13 }}>Sent to +91 {phone}</p>
-            </div>
-
-            <div style={{
-              background: 'rgba(255,255,255,0.04)', border: `1px solid ${S.border}`,
-              borderRadius: 14, display: 'flex', alignItems: 'center', padding: '14px 16px',
-            }}>
-              <input
-                id="otp-input"
-                type="number"
-                placeholder="6-digit OTP"
-                value={otp}
-                onChange={e => { setOtp(e.target.value.slice(0, 6)); setError('') }}
-                autoFocus
-                style={{
-                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  color: S.cream, fontSize: 24, fontFamily: S.font, letterSpacing: 8,
-                  textAlign: 'center',
-                }}
-              />
-            </div>
-
-            {error && <p style={{ color: '#ff6b6b', fontSize: 13 }}>{error}</p>}
-
-            <button
-              id="verify-otp-btn"
-              onClick={handleVerifyOtp}
-              disabled={loading || otp.length < 4}
-              style={{
-                width: '100%', padding: '15px 0', borderRadius: 16,
-                background: 'linear-gradient(135deg, #E5A93C, #C8922A)',
-                border: 'none', cursor: otp.length >= 4 ? 'pointer' : 'not-allowed',
-                fontFamily: S.font, fontWeight: 700, fontSize: 16, color: '#0D0A08',
-                opacity: (loading || otp.length < 4) ? 0.6 : 1,
-                boxShadow: '0 8px 32px rgba(200,146,42,0.35)',
-              }}
-            >
-              {loading ? 'Verifying...' : 'Verify & Continue'}
-            </button>
-
-            <button
-              onClick={handleSendOtp}
-              disabled={loading}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: S.subtle, fontSize: 13, fontFamily: S.font }}
-            >
-              Didn't receive it? <span style={{ color: S.gold, textDecoration: 'underline' }}>Resend OTP</span>
-            </button>
-          </div>
-        )}
       </div>
 
       <p style={{ color: 'rgba(196,185,154,0.2)', fontSize: 10, marginTop: 32, textAlign: 'center' }}>
