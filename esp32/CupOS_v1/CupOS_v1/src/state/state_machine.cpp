@@ -31,6 +31,7 @@ bool StateMachine::processQR() {
             _dispenseMs = dur;
             _productName = pName;
             _isHalf = isHalf;
+            _currentToken = payload;
             return true;
         } else {
             Serial.println(">>> ORDER VERIFICATION FAILED <<<");
@@ -114,6 +115,11 @@ void StateMachine::update() {
         case CupOSState::CupDispense:
             // SAFETY: Guarantee the door is fully shut before anything drops!
             if (!_engine->closeShutter()) {
+                if (_net && _currentToken.length() > 0) {
+                    displayManager.showMessage("Door Error!\nRefunding token...");
+                    _net->rollbackOrder(_currentToken, "door_close_failed");
+                    _currentToken = "";
+                }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 displayManager.showMessage("Out of Order (Door)");
@@ -131,6 +137,12 @@ void StateMachine::update() {
                 }
             }
             if (!_engine->dispenseCup()) {
+                if (_net && _currentToken.length() > 0) {
+                    diagnostics.warning(ModuleID::System, "Dispense cup failed. Rolling back token...");
+                    displayManager.showMessage("Cup Jam!\nRefunding token...");
+                    _net->rollbackOrder(_currentToken, "cup_dispense_failed");
+                    _currentToken = "";
+                }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 displayManager.showMessage("Out of Order\n(Cup Error)");
@@ -162,11 +174,17 @@ void StateMachine::update() {
 
         case CupOSState::ShutterOpen:
             if (!_engine->openShutter()) {
+                if (_net && _currentToken.length() > 0) {
+                    displayManager.showMessage("Door Error!\nRefunding token...");
+                    _net->rollbackOrder(_currentToken, "door_jam_open");
+                    _currentToken = "";
+                }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 displayManager.showMessage("Out of Order (Door)");
                 _engine->playSound("/error_jam.wav"); // Play sound alert
             } else {
+                _currentToken = ""; // Dispense succeeded & drink accessible
                 _state = CupOSState::Ready;
                 _stateStartMs = millis();
                 _warningPlayed = false; // Reset warning flag
@@ -240,6 +258,11 @@ void StateMachine::update() {
             // State used to clear an abandoned cup before a new order
             displayManager.showMessage("Opening Door...");
             if (!_engine->openShutter()) {
+                if (_net && _currentToken.length() > 0) {
+                    displayManager.showMessage("Door Jam!\nRefunding token...");
+                    _net->rollbackOrder(_currentToken, "door_jam_open");
+                    _currentToken = "";
+                }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 displayManager.showMessage("Out of Order (Door)");
@@ -247,6 +270,7 @@ void StateMachine::update() {
             } else {
                 _state = CupOSState::AwaitOrder;
                 _stateStartMs = millis();
+                _cupRemovedMs = 0; // Reset cup removal tracker
                 displayManager.showMessage("Please remove\nold cup!");
                 _engine->playSound("/remove_cup.wav"); // Alert user to remove cup
             }
@@ -254,26 +278,43 @@ void StateMachine::update() {
 
         case CupOSState::AwaitOrder:
             if (!_engine->isCupPresent()) {
-                // Cup was successfully removed!
-                displayManager.showMessage("Thank you!\nStarting order...");
-                if (!_engine->closeShutter()) {
-                    _state = CupOSState::Error;
-                    _stateStartMs = millis();
-                    displayManager.showMessage("Out of Order (Door)");
-                    _engine->playSound("/error_jam.wav");
-                } else {
-                    // Old cup is gone and door is closed, proceed with new order!
-                    _state = CupOSState::CupDispense;
-                    _stateStartMs = millis();
-                    displayManager.showMessage("Order Received!");
+                if (_cupRemovedMs == 0) {
+                    _cupRemovedMs = millis(); // Start the removal delay timer
+                } else if (millis() - _cupRemovedMs >= 2000) {
+                    // Cup was successfully removed!
+                    displayManager.showMessage("Thank you!\nStarting order...");
+                    if (!_engine->closeShutter()) {
+                        if (_net && _currentToken.length() > 0) {
+                            displayManager.showMessage("Door Error!\nRefunding token...");
+                            _net->rollbackOrder(_currentToken, "door_close_failed");
+                            _currentToken = "";
+                        }
+                        _state = CupOSState::Error;
+                        _stateStartMs = millis();
+                        displayManager.showMessage("Out of Order (Door)");
+                        _engine->playSound("/error_jam.wav");
+                    } else {
+                        // Old cup is gone and door is closed, proceed with new order!
+                        _state = CupOSState::CupDispense;
+                        _stateStartMs = millis();
+                        displayManager.showMessage("Order Received!");
+                    }
                 }
-            } else if (elapsed(45000)) {
-                // User scanned QR but walked away without removing the old cup
-                diagnostics.warning(ModuleID::System, "[SM] User failed to clear cup");
-                _engine->closeShutter();
-                _state = CupOSState::Idle;
-                _stateStartMs = millis();
-                displayManager.showIdleScreen("https://cupos.in");
+            } else {
+                _cupRemovedMs = 0; // Reset timer if cup is put back or sensor flickers
+                if (elapsed(45000)) {
+                    // User scanned QR but walked away without removing the old cup
+                    diagnostics.warning(ModuleID::System, "[SM] User failed to clear cup");
+                    if (_net && _currentToken.length() > 0) {
+                        displayManager.showMessage("Timeout!\nRefunding token...");
+                        _net->rollbackOrder(_currentToken, "old_cup_not_cleared");
+                        _currentToken = "";
+                    }
+                    _engine->closeShutter();
+                    _state = CupOSState::Idle;
+                    _stateStartMs = millis();
+                    displayManager.showIdleScreen("https://cupos.in");
+                }
             }
             break;
     }

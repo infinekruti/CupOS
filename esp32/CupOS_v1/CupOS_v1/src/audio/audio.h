@@ -11,11 +11,14 @@ public:
     void update(); 
     void stop();
     bool isPlaying() { return _isPlaying; }
+    void setVolume(float volume) { _volume = constrain(volume, 0.0f, 1.0f); }
 
 private:
     bool _isPlaying = false;
     File _audioFile;
     bool _driverInstalled = false;
+    uint16_t _bitsPerSample = 16;
+    float _volume = 0.3f; // Default to 30% volume
 };
 
 extern AudioPlayer audioPlayer;

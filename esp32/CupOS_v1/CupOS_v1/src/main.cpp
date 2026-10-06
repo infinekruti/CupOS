@@ -26,7 +26,7 @@ QRScanner qr(QR_RX, QR_TX, QR_BAUDRATE);
 Network net("cupos.in", 443);
 
 // Set to true to test individual components, false for normal operation
-bool TEST_MODE = false;
+bool TEST_MODE = true;
 
 void setup()
 {

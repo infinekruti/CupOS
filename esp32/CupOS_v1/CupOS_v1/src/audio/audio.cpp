@@ -35,13 +35,12 @@ void AudioPlayer::play(const char* filename) {
     // --- Parse WAV header ---
     uint16_t numChannels  = 1;
     uint32_t sampleRate   = 44100;
-    uint16_t bitsPerSample = 16;
     _audioFile.seek(22); _audioFile.read((uint8_t*)&numChannels,   2);
     _audioFile.seek(24); _audioFile.read((uint8_t*)&sampleRate,    4);
-    _audioFile.seek(34); _audioFile.read((uint8_t*)&bitsPerSample, 2);
+    _audioFile.seek(34); _audioFile.read((uint8_t*)&_bitsPerSample, 2);
     _audioFile.seek(44); // PCM data starts at byte 44
 
-    Serial.printf("WAV: %dHz, %dch, %dbit\n", sampleRate, numChannels, bitsPerSample);
+    Serial.printf("WAV: %dHz, %dch, %dbit\n", sampleRate, numChannels, _bitsPerSample);
 
     // Uninstall previous driver if still installed
     if (_driverInstalled) {
@@ -61,7 +60,7 @@ void AudioPlayer::play(const char* filename) {
     i2s_config_t i2s_cfg = {
         .mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate          = sampleRate,
-        .bits_per_sample      = (i2s_bits_per_sample_t)bitsPerSample,
+        .bits_per_sample      = (i2s_bits_per_sample_t)_bitsPerSample,
         .channel_format       = chanFmt,
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,
@@ -102,6 +101,15 @@ void AudioPlayer::update() {
         uint8_t buf[1024];
         int bytes_read = _audioFile.read(buf, sizeof(buf));
         if (bytes_read <= 0) break;
+
+        // --- SOFTWARE VOLUME CONTROL ---
+        if (_bitsPerSample == 16 && _volume < 1.0f) {
+            int16_t* samples = (int16_t*)buf;
+            int num_samples = bytes_read / 2;
+            for (int i = 0; i < num_samples; i++) {
+                samples[i] = (int16_t)(samples[i] * _volume);
+            }
+        }
 
         size_t bytes_written = 0;
         i2s_write(I2S_NUM_0, buf, bytes_read, &bytes_written, pdMS_TO_TICKS(5));

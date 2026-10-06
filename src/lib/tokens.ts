@@ -116,3 +116,53 @@ export async function getOrderTokens(orderId: string) {
   if (error) throw new Error(error.message)
   return data
 }
+
+/** Atomically rollback a token to UNUSED if physical dispensing fails */
+export async function rollbackToken(params: {
+  token: string
+  machineCode: string
+  reason?: string
+}): Promise<{ success: boolean; reason?: string }> {
+  const { token, machineCode, reason } = params
+
+  // 1. Get machine ID
+  const { data: machine } = await supabaseAdmin
+    .from('machines')
+    .select('id')
+    .eq('machine_code', machineCode)
+    .single()
+
+  if (!machine) {
+    return { success: false, reason: 'Unknown machine' }
+  }
+
+  // 2. Atomically revert status from REDEEMED to UNUSED
+  const { data, error } = await supabaseAdmin
+    .from('tokens')
+    .update({
+      status: 'UNUSED',
+      redeemed_at: null,
+      machine_id: null,
+    })
+    .eq('token', token)
+    .eq('status', 'REDEEMED')
+    .select('id, token, order_id')
+
+  if (error || !data || data.length === 0) {
+    return { success: false, reason: 'Token was not found or not in REDEEMED state' }
+  }
+
+  console.warn(`[rollbackToken] Rolled back token ${token} on machine ${machineCode}. Reason: ${reason || 'unspecified'}`)
+
+  // 3. Update machine status and record maintenance if hardware failure
+  await supabaseAdmin
+    .from('machines')
+    .update({
+      last_seen: new Date().toISOString(),
+      status: (reason === 'cup_dispense_failed' || reason === 'door_jam_open') ? 'maintenance' : 'online',
+    })
+    .eq('id', machine.id)
+
+  return { success: true }
+}
+

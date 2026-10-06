@@ -30,7 +30,7 @@ bool Engine::closeShutter() {
 
 void Engine::dispenseProduct(uint8_t productId, uint16_t ms, bool isHalf) {
     diagnostics.info(ModuleID::System, (String("Dispensing product ") + String(productId) + " (Half: " + String(isHalf) + ")").c_str());
-    
+
     if (isHalf) {
         // Trigger the half quantity button switch relay first
         relay.halfCup(true);

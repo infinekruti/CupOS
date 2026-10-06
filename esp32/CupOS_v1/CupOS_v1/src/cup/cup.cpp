@@ -21,7 +21,7 @@ void CupDispenser::begin() {
 }
 
 bool CupDispenser::dispense() {
-    for (int attempt = 1; attempt <= 3; attempt++) {
+    for (int attempt = 1; attempt <= 5; attempt++) {
         diagnostics.info(ModuleID::System, (String("Activating Cup Servo (Attempt ") + String(attempt) + ")").c_str());
         _servo.write(100); // Rotate to drop cup
         delay(1000);       // Allow time for full physical rotation
@@ -32,7 +32,7 @@ bool CupDispenser::dispense() {
             return true; // Success!
         }
         
-        if (attempt < 3) {
+        if (attempt < 5) {
             diagnostics.warning(ModuleID::System, "Cup not detected, retrying...");
             delay(500); // Brief pause before trying again
         }

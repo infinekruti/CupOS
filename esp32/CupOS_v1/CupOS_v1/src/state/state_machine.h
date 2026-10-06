@@ -38,5 +38,6 @@ private:
     bool _isHalf = false;
     bool _warningPlayed = false;
     uint32_t _cupRemovedMs = 0;
+    String _currentToken = "";
     bool processQR();
 };
