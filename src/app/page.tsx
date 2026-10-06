@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import AboutModal from '@/components/AboutModal'
+import Footer from '@/components/Footer'
 
 const S = {
   bg: '#0D0A08',
@@ -159,6 +160,8 @@ export default function LoginPage() {
       <p style={{ color: 'rgba(196,185,154,0.2)', fontSize: 10, marginTop: 32, textAlign: 'center' }}>
         By continuing, you agree to cupOS Terms & Privacy Policy
       </p>
+
+      <Footer />
 
       <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
     </div>

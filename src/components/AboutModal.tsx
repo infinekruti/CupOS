@@ -282,9 +282,15 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
             padding: '14px 24px 20px',
             borderTop: '1px solid rgba(255,255,255,0.06)',
             display: 'flex',
-            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: 12,
+            alignItems: 'center',
           }}
         >
+          <p style={{ margin: 0, fontSize: 11, color: 'rgba(196,185,154,0.5)', textAlign: 'center' }}>
+            Developed by <span style={{ color: 'rgba(229,169,60,0.75)' }}>Infinekruti Innovations Pvt Ltd</span> for <span style={{ color: '#F5F0E8' }}>cupOS</span>
+          </p>
+
           <button
             onClick={onClose}
             style={{

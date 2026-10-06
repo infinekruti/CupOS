@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import Footer from '@/components/Footer'
 
 type TokenItem = {
   id: string
@@ -289,6 +290,8 @@ export default function OrdersPage() {
           )
         })}
       </div>
+
+      <Footer />
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

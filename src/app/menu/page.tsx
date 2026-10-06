@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import AboutModal from '@/components/AboutModal'
+import Footer from '@/components/Footer'
 
 type Product = {
   id: string
@@ -389,6 +390,9 @@ export default function MenuPage() {
           </button>
         </div>
       )}
+
+      {/* Footer */}
+      <Footer />
 
       <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
       <style>{`@keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }`}</style>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import Footer from '@/components/Footer'
 
 const S = {
   bg: '#070504',
@@ -168,6 +169,8 @@ export default function WalletPage() {
         </button>
 
       </div>
+
+      <Footer />
     </div>
   )
 }
