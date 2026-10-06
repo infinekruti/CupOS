@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
+import AboutModal from '@/components/AboutModal'
 
 type Product = {
   id: string
@@ -49,6 +50,7 @@ export default function MenuPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [cart, setCart] = useState<Cart>({})
+  const [showAbout, setShowAbout] = useState(false)
 
   const totalItems = Object.values(cart).reduce((s, sizes) => s + (sizes.full || 0) + (sizes.half || 0), 0)
   const totalPrice = products.reduce((s, p) => {
@@ -125,7 +127,25 @@ export default function MenuPage() {
           }}>OS</span>
         </span>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* About Us */}
+          <button
+            id="about-us-btn"
+            onClick={() => setShowAbout(true)}
+            title="About cupOS & FSSAI License"
+            style={{
+              background: 'rgba(200,146,42,0.1)', border: `1px solid ${S.border}`,
+              borderRadius: 10, padding: '7px 11px', color: S.goldLight,
+              fontSize: 12, fontFamily: S.font, fontWeight: 600,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            About
+          </button>
+
           {/* Wallet */}
           <button
             onClick={() => router.push('/wallet')}
@@ -370,6 +390,7 @@ export default function MenuPage() {
         </div>
       )}
 
+      <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
       <style>{`@keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }`}</style>
     </div>
   )

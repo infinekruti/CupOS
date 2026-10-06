@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import AboutModal from '@/components/AboutModal'
 
 const S = {
   bg: '#0D0A08',
@@ -24,6 +25,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<AuthStep>('main')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showAbout, setShowAbout] = useState(false)
 
   // ── Google OAuth ──────────────────────────────
   const handleGoogle = async () => {
@@ -56,6 +58,27 @@ export default function LoginPage() {
         background: 'radial-gradient(circle, rgba(200,146,42,0.12) 0%, transparent 70%)',
         pointerEvents: 'none',
       }} />
+
+      {/* Top Header / About Us */}
+      <div style={{
+        position: 'absolute', top: 20, right: 20, zIndex: 10,
+      }}>
+        <button
+          id="about-us-btn"
+          onClick={() => setShowAbout(true)}
+          style={{
+            background: 'rgba(200,146,42,0.1)', border: `1px solid ${S.border}`,
+            borderRadius: 12, padding: '7px 12px', color: S.goldLight,
+            fontSize: 12, fontFamily: S.font, fontWeight: 600,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          About Us
+        </button>
+      </div>
 
       {/* Logo */}
       <div style={{ textAlign: 'center', marginBottom: 48 }}>
@@ -136,6 +159,8 @@ export default function LoginPage() {
       <p style={{ color: 'rgba(196,185,154,0.2)', fontSize: 10, marginTop: 32, textAlign: 'center' }}>
         By continuing, you agree to cupOS Terms & Privacy Policy
       </p>
+
+      <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   )
 }
