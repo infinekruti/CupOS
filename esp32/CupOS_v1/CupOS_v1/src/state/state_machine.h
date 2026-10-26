@@ -16,7 +16,8 @@ enum class CupOSState {
     ShutterCloseAbandoned,
     Ready,
     Collect,
-    Error
+    Error,
+    Flush
 };
 
 class StateMachine {
@@ -24,6 +25,7 @@ public:
     StateMachine() = default;
     void begin(QRScanner* qr, Network* net);
     void update();
+    void triggerFlush();
     CupOSState current() const { return _state; }
 private:
     CupOSState _state = CupOSState::Boot;
@@ -39,5 +41,7 @@ private:
     bool _warningPlayed = false;
     uint32_t _cupRemovedMs = 0;
     String _currentToken = "";
+    uint32_t _lastFlushTime = 0;
+    uint16_t _drinksSinceLastFlush = 0;
     bool processQR();
 };

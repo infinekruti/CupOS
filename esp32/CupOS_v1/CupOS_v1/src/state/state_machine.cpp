@@ -10,9 +10,21 @@ void StateMachine::begin(QRScanner* qr, Network* net) {
     extern Engine engine;
     _engine = &engine;
 
+    _lastFlushTime = millis();
+    _drinksSinceLastFlush = 0;
+
     _state = CupOSState::Boot;
     _stateStartMs = millis();
     diagnostics.info(ModuleID::System, "[SM] Boot");
+}
+
+void StateMachine::triggerFlush() {
+    diagnostics.info(ModuleID::System, "[SM] Starting Hygiene Flush Cycle...");
+    _state = CupOSState::Flush;
+    _stateStartMs = millis();
+    displayManager.showMessage("Hygiene Cleaning...\nHot Water Rinse\nReady in 10s");
+    _engine->closeShutter(); // Keep shutter closed for safety & splash containment
+    _engine->flushMachine();
 }
 
 bool StateMachine::processQR() {
@@ -21,6 +33,14 @@ bool StateMachine::processQR() {
         String payload = _qr->read();
         Serial.println(">>> QR PAYLOAD READ: " + payload + " <<<");
         diagnostics.info(ModuleID::System, (String("[QR] Scanned: ") + payload).c_str());
+
+        // Fast path: Maintenance Hygiene Flush QR
+        if (payload.indexOf("FLUSH") != -1) {
+            diagnostics.info(ModuleID::System, "[QR] Maintenance Flush QR recognized!");
+            triggerFlush();
+            return false;
+        }
+
         uint8_t prodId;
         uint16_t dur;
         String pName;
@@ -83,6 +103,16 @@ void StateMachine::update() {
             break;
 
         case CupOSState::Idle:
+            // Auto-Flush check: Every 2 hours (24 heartbeats / 7,200,000 ms) IF at least 1 drink was prepared
+            {
+                const uint32_t FLUSH_INTERVAL_MS = 2UL * 60UL * 60UL * 1000UL; // 2 hours
+                if (_drinksSinceLastFlush >= 1 && (millis() - _lastFlushTime >= FLUSH_INTERVAL_MS)) {
+                    diagnostics.info(ModuleID::System, "[SM] 2-Hour Auto-Flush Triggered (Drinks served since last flush: %d)", _drinksSinceLastFlush);
+                    triggerFlush();
+                    break;
+                }
+            }
+
             // Check network health every 15 seconds
             if (elapsed(15000)) {
                 _stateStartMs = millis();
@@ -165,6 +195,7 @@ void StateMachine::update() {
         case CupOSState::BeveragePrep:
             // Dispense product (this call blocks safely using WDT feed)
             _engine->dispenseProduct(_productId, _dispenseMs, _isHalf);
+            _drinksSinceLastFlush++;
             
             Serial.println(">>> [SM] About to play CupOS.wav <<<");
             delay(50); // Let SPI bus settle after display writes
@@ -270,6 +301,18 @@ void StateMachine::update() {
                     lastErrorReportMs = millis();
                     if (_net) _net->reportMachineError("MACHINE_IN_ERROR_STATE", "Machine is halted in Error state awaiting maintenance");
                 }
+            }
+            break;
+
+        case CupOSState::Flush:
+            // Total cycle time ~10s (internal coffee machine lag is ~4s, rinse pours ~6s)
+            if (elapsed(10000)) {
+                diagnostics.info(ModuleID::System, "[SM] Hygiene Flush cycle finished.");
+                _lastFlushTime = millis();
+                _drinksSinceLastFlush = 0;
+                _state = CupOSState::Idle;
+                _stateStartMs = millis();
+                displayManager.showIdleScreen("https://cupos.in");
             }
             break;
 

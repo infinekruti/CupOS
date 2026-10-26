@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import QRCode from 'react-qr-code'
 import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -174,6 +175,7 @@ function DashboardSection() {
 
 // ── Machines ──────────────────────────────────────────────────
 function MachinesSection({ machines, onRefresh }:{ machines:Machine[]; onRefresh:()=>void }) {
+  const [showFlushModal, setShowFlushModal] = useState(false)
   const toggle = async (m:Machine) => {
     // If in maintenance or offline, enabling sets it to online. If online, disables to offline.
     const next = m.status === 'online' ? 'offline' : 'online'
@@ -193,10 +195,49 @@ function MachinesSection({ machines, onRefresh }:{ machines:Machine[]; onRefresh
 
   return (
     <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
-        <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Machine Management</h2>
-        <button onClick={onRefresh} style={btnGhost}>↻ Refresh</button>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Machine Management</h2>
+          <p style={{color:C.muted,fontSize:12,marginTop:2}}>Auto-flush: triggers every 2 hours if drinks dispensed (10s rinse cycle)</p>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button onClick={() => setShowFlushModal(true)} style={{...btnGhost,borderColor:C.gold,color:C.goldL,display:'flex',alignItems:'center',gap:6}}>
+            <span>💧</span> Hygiene Flush QR
+          </button>
+          <button onClick={onRefresh} style={btnGhost}>↻ Refresh</button>
+        </div>
       </div>
+
+      {/* Flush QR Modal */}
+      {showFlushModal && (
+        <div style={{
+          position:'fixed',top:0,left:0,right:0,bottom:0,
+          background:'rgba(0,0,0,0.8)',display:'flex',alignItems:'center',justifyContent:'center',
+          zIndex:1000,backdropFilter:'blur(4px)',padding:20
+        }}>
+          <div style={{
+            background:'#0D0A08',border:`1px solid ${C.gold}`,borderRadius:20,padding:'28px 24px',
+            maxWidth:380,width:'100%',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:16,
+            boxShadow:'0 20px 40px rgba(0,0,0,0.8)'
+          }}>
+            <div style={{fontSize:36}}>💧</div>
+            <h3 style={{color:C.cream,fontSize:20,fontWeight:700}}>Staff Hygiene Flush QR</h3>
+            <p style={{color:C.muted,fontSize:13,lineHeight:1.4}}>
+              Point this QR code at the machine scanner. It immediately executes the <strong>4× Relay 5 + 1× Relay 1</strong> combination and runs a 10-second hot water cleaning cycle.
+            </p>
+            <div style={{background:'#FFFFFF',padding:14,borderRadius:14,marginTop:6}}>
+              <QRCode value="CPOS-FLUSH" size={180} />
+            </div>
+            <span style={{fontFamily:'monospace',fontSize:12,color:C.goldL,background:'rgba(255,255,255,0.06)',padding:'4px 12px',borderRadius:6}}>
+              TOKEN: CPOS-FLUSH
+            </span>
+            <button onClick={() => setShowFlushModal(false)} style={{...btnGold,width:'100%',marginTop:8}}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={{overflowX:'auto',...card,padding:0}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
           <thead><tr style={{color:C.muted,background:'rgba(255,255,255,0.02)'}}>

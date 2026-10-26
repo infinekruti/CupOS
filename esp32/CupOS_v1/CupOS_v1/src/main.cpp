@@ -92,6 +92,7 @@ void setup()
         Serial.println("[z] - Test SD Card Read/Write");
         Serial.println("[r] - Test QR Scanner (15s)");
         Serial.println("[t] - Raw QR Hex Dump (Debug)");
+        Serial.println("[f] - Test Hygiene Flush (4x Relay 5 + 1x Relay 1)");
         Serial.println("================================\n");
     }
 }
@@ -131,6 +132,7 @@ void loop()
                 case 'x': engine.closeShutter(); break;
                 case 'a': engine.playSound("/CupOS.wav"); break;
                 case 'd': displayManager.showMessage("Display Test OK!"); break;
+                case 'f': sm.triggerFlush(); break;
                 case 'q': {
                     uint8_t prodId;
                     uint16_t dur;

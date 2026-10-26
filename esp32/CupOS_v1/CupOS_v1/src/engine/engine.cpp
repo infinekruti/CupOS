@@ -62,6 +62,29 @@ void Engine::dispenseProduct(uint8_t productId, uint16_t ms, bool isHalf) {
     }
 }
 
+void Engine::flushMachine() {
+    diagnostics.info(ModuleID::System, "Executing Hygiene Flush combination: 4x Relay 5, then 1x Relay 1");
+
+    // 1. Pulse Relay 5 (RELAY_HALF) 4 times
+    for (int i = 0; i < 4; i++) {
+        relay.halfCup(true);
+        delay(250);
+        relay.halfCup(false);
+        delay(200);
+        esp_task_wdt_reset();
+    }
+
+    delay(300);
+    esp_task_wdt_reset();
+
+    // 2. Pulse Relay 1 (RELAY_BEV1) once
+    relay.beverage1(true);
+    delay(400);
+    relay.beverage1(false);
+
+    diagnostics.info(ModuleID::System, "Flush combination triggered. Machine will start rinse in ~4s.");
+}
+
 void Engine::playSound(const char* name) {
     audioPlayer.play(name);
 }

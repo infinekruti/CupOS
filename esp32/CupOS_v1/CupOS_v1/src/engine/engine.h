@@ -12,5 +12,7 @@ public:
     void dispenseProduct(uint8_t productId, uint16_t ms, bool isHalf);
     bool isCupPresent();
 
+    void flushMachine();
+
     void playSound(const char* name);
 };
