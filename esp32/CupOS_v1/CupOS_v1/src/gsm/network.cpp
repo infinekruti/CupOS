@@ -524,3 +524,69 @@ bool Network::reportMachineError(const String& errorCode, const String& details)
     return success;
 }
 
+bool Network::reportMachineOnline(const String& details) {
+    if (!isConnected()) {
+        diagnostics.warning(ModuleID::System, "Online Report: GSM Not Connected, attempting reconnect...");
+        reconnect();
+        if (!isConnected()) return false;
+    }
+
+    diagnostics.info(ModuleID::System, (String("Dispatching Machine Online Status: ") + details).c_str());
+
+    auto sendRawAT = [](const String& cmd, uint32_t waitMs = 1000) -> String {
+        SerialAT.println(cmd);
+        uint32_t startMs = millis();
+        String resp = "";
+        while (millis() - startMs < waitMs) {
+            while (SerialAT.available()) {
+                resp += (char)SerialAT.read();
+            }
+            if (cmd.indexOf("HTTPACTION") != -1) {
+                if (resp.indexOf("+HTTPACTION:") != -1) break;
+            } else {
+                if (resp.indexOf("OK\r\n") != -1 || resp.indexOf("ERROR\r\n") != -1) break;
+            }
+            esp_task_wdt_reset();
+            delay(10);
+        }
+        return resp;
+    };
+
+    String requestBody = "{\"machineId\":\"" + String(MACHINE_ID) + "\",\"secret\":\"" + String(MACHINE_SECRET_KEY) + "\",\"status\":\"online\",\"errorCode\":\"ONLINE_HEALTHY\",\"details\":\"" + details + "\"}";
+
+    sendRawAT("AT+HTTPTERM");
+    sendRawAT("AT+CSSLCFG=\"ignoreretc\",0,1");
+    sendRawAT("AT+CSSLCFG=\"enableSNI\",0,1");
+    
+    if (sendRawAT("AT+HTTPINIT").indexOf("ERROR") != -1) {
+        diagnostics.error(ModuleID::System, "MachineOnline: HTTPINIT Failed");
+        return false;
+    }
+
+    sendRawAT("AT+HTTPPARA=\"SSLCFG\",0");
+    String url = String("https://") + _host + "/api/machine-alert";
+    sendRawAT("AT+HTTPPARA=\"URL\",\"" + url + "\"");
+    sendRawAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+    
+    SerialAT.println("AT+HTTPDATA=" + String(requestBody.length()) + ",5000");
+    delay(100);
+    while (SerialAT.available()) SerialAT.read();
+    
+    SerialAT.print(requestBody);
+    delay(500);
+    while (SerialAT.available()) SerialAT.read();
+
+    String actionResp = sendRawAT("AT+HTTPACTION=1", 10000);
+    sendRawAT("AT+HTTPTERM");
+
+    bool success = actionResp.indexOf("+HTTPACTION: 1,200") != -1;
+    if (success) {
+        _lastCommTime = millis();
+        diagnostics.info(ModuleID::System, "Online status confirmed by server! Machine restored.");
+    } else {
+        diagnostics.warning(ModuleID::System, "Online report request timed out");
+    }
+    return success;
+}
+
+

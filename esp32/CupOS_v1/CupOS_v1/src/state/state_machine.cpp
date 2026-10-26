@@ -99,6 +99,11 @@ void StateMachine::update() {
                 _stateStartMs = millis();
                 diagnostics.info(ModuleID::System, "[SM] Idle");
                 displayManager.showIdleScreen("https://cupos.in");
+
+                // Self-test passed & shutter homed! Notify server to restore machine to ONLINE automatically
+                if (_net) {
+                    _net->reportMachineOnline("Startup self-test passed. Machine calibrated and healthy.");
+                }
             }
             break;
 

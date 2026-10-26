@@ -33,9 +33,13 @@ export async function POST(req: NextRequest) {
     }
 
     const timestamp = new Date().toISOString()
-    console.warn(`[MACHINE ALERT] Machine ${machineId} reported ERROR: ${errorCode} - ${details}`)
+    if (status === 'online') {
+      console.log(`[MACHINE ONLINE] Machine ${machineId} reported HEALTHY ONLINE status: ${details || 'Self-test passed'}`)
+    } else {
+      console.warn(`[MACHINE ALERT] Machine ${machineId} reported ERROR: ${errorCode} - ${details}`)
+    }
 
-    // 1. Update machine status to maintenance in Supabase
+    // 1. Update machine status in Supabase (online or maintenance)
     const { error: updateError } = await supabaseAdmin
       .from('machines')
       .update({
@@ -49,17 +53,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: updateError.message }, { status: 500 })
     }
 
-    // 2. Append to in-memory alerts ring buffer
-    const alertEntry: MachineAlertItem = {
-      id: `${machineId}-${Date.now()}`,
-      machineId,
-      errorCode,
-      details,
-      timestamp,
-      resolved: false,
+    // 2. Update alerts in memory
+    if (status === 'online') {
+      // Mark all past alerts for this machine as resolved
+      for (const a of alertHistory) {
+        if (a.machineId === machineId) {
+          a.resolved = true
+        }
+      }
+    } else {
+      // Append to in-memory alerts ring buffer
+      const alertEntry: MachineAlertItem = {
+        id: `${machineId}-${Date.now()}`,
+        machineId,
+        errorCode,
+        details,
+        timestamp,
+        resolved: false,
+      }
+      alertHistory.unshift(alertEntry)
+      if (alertHistory.length > 50) alertHistory.pop()
     }
-    alertHistory.unshift(alertEntry)
-    if (alertHistory.length > 50) alertHistory.pop()
 
     return NextResponse.json({
       success: true,

@@ -11,6 +11,7 @@ public:
     bool sendHeartbeat();
     bool rollbackOrder(const String& token, const String& reason);
     bool reportMachineError(const String& errorCode, const String& details);
+    bool reportMachineOnline(const String& details = "Startup self-test passed. Machine healthy.");
     bool isConnected();
     void reconnect();
     uint32_t getLastCommTime() const { return _lastCommTime; }
