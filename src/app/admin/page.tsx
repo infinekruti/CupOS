@@ -80,7 +80,7 @@ function DashboardSection() {
   if(!stats) return <p style={{color:C.muted}}>Loading...</p>
   return (
     <div style={{display:'flex',flexDirection:'column',gap:24}}>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
+      <div className="kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
         <KPI label="Revenue Today"     value={rupee(stats.revenueToday)}  sub={`${stats.ordersToday} orders`} />
         <KPI label="Revenue This Month" value={rupee(stats.revenueMonth)} color={C.goldL} />
         <KPI label="Total Given Credit" value={rupee(stats.totalWalletCredit)} color="#34d399" sub="Lifetime" />
@@ -89,7 +89,7 @@ function DashboardSection() {
         <KPI label="Active Customers"  value={`${stats.activeCustomers}`} sub="this month" color='#60a5fa' />
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24}}>
+      <div className="chart-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24}}>
         {/* Product Sales Breakdown */}
         <div style={card}>
           <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5,marginBottom:14}}>Top Products (This Month)</p>
@@ -463,7 +463,7 @@ function TransactionsSection() {
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
       <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Transactions</h2>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
+      <div className="filter-row" style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
         <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={inp} />
         <input type="date" value={to}   onChange={e=>setTo(e.target.value)}   style={inp} />
         <select value={status} onChange={e=>setStatus(e.target.value)} style={{...inp,cursor:'pointer'}}>
@@ -512,7 +512,7 @@ function TokensSection() {
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
       <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Token Management</h2>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
+      <div className="filter-row" style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
         <input placeholder="Search token…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:200}} />
         <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp,cursor:'pointer'}}>
           <option value="">All Status</option>
@@ -761,6 +761,13 @@ export default function AdminPage() {
   const [adminEmail, setAdminEmail] = useState('')
   const [machines, setMachines] = useState<Machine[]>([])
   const [alerts, setAlerts] = useState<AlertItem[]>([])
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  // Ensure full-width container for admin console across desktop and phone
+  useEffect(() => {
+    document.body.classList.add('admin-mode')
+    return () => document.body.classList.remove('admin-mode')
+  }, [])
 
   const loadMachinesAndAlerts = useCallback(() => {
     fetch(`/api/admin/machines?_t=${Date.now()}`)
@@ -928,17 +935,99 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={{display:'flex',minHeight:'100vh',background:C.bg,fontFamily:C.font}}>
+    <div className="admin-container" style={{display:'flex',minHeight:'100vh',background:C.bg,fontFamily:C.font,position:'relative',width:'100%'}}>
 
-      {/* Sidebar */}
-      <div style={{width:220,background:C.side,borderRight:`1px solid ${C.border}`,display:'flex',flexDirection:'column',position:'fixed',top:0,left:0,height:'100vh',overflowY:'auto',zIndex:10}}>
-        <div style={{padding:'28px 20px 20px'}}>
-          <div style={{fontSize:20,fontWeight:800}}>
-            <span style={{color:'#FFFFFF'}}>cup</span>
-            <span style={{background:`linear-gradient(135deg,${C.goldL},${C.gold})`,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>OS</span>
-          </div>
-          <div style={{fontSize:10,color:C.muted,marginTop:2,textTransform:'uppercase',letterSpacing:1.5}}>Admin Console</div>
+      {/* Mobile Top App Bar */}
+      <div className="mobile-header">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: `1px solid ${C.border}`,
+            color: C.cream,
+            fontSize: 20,
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            position: 'relative',
+          }}
+          aria-label="Toggle Navigation Menu"
+        >
+          ☰
+          {maintenanceMachines.length > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: -3,
+              right: -3,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: C.red,
+              boxShadow: `0 0 8px ${C.red}`,
+            }} />
+          )}
+        </button>
+
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize: 18, fontWeight: 800}}>
+            <span style={{color: '#FFFFFF'}}>cup</span>
+            <span style={{background: `linear-gradient(135deg,${C.goldL},${C.gold})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'}}>OS</span>
+          </span>
+          <span style={{color: C.goldL, fontSize: 12, fontWeight: 700, background: 'rgba(200,146,42,0.12)', padding: '3px 8px', borderRadius: 8}}>
+            {NAV.find(n => n.id === tab)?.label || 'Console'}
+          </span>
         </div>
+
+        <button
+          onClick={() => setTab('alerts')}
+          style={{
+            background: maintenanceMachines.length > 0 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
+            border: `1px solid ${maintenanceMachines.length > 0 ? C.red : C.border}`,
+            color: maintenanceMachines.length > 0 ? C.red : C.muted,
+            fontSize: 13,
+            padding: '6px 10px',
+            borderRadius: 10,
+            cursor: 'pointer',
+            fontWeight: 700,
+          }}
+        >
+          {maintenanceMachines.length > 0 ? `🚨 ${maintenanceMachines.length}` : '✓ Normal'}
+        </button>
+      </div>
+
+      {/* Mobile Drawer Backdrop */}
+      {mobileNavOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Navigation */}
+      <aside className={`admin-sidebar ${mobileNavOpen ? 'open' : ''}`}>
+        <div style={{padding:'24px 20px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:20,fontWeight:800}}>
+              <span style={{color:'#FFFFFF'}}>cup</span>
+              <span style={{background:`linear-gradient(135deg,${C.goldL},${C.gold})`,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>OS</span>
+            </div>
+            <div style={{fontSize:10,color:C.muted,marginTop:2,textTransform:'uppercase',letterSpacing:1.5}}>Admin Console</div>
+          </div>
+          {/* Close button for mobile drawer */}
+          <button
+            onClick={() => setMobileNavOpen(false)}
+            className="mobile-close-btn"
+            style={{background:'none',border:'none',color:C.muted,fontSize:22,cursor:'pointer',padding:4}}
+            aria-label="Close Navigation"
+          >
+            ✕
+          </button>
+        </div>
+
         <nav style={{flex:1,padding:'0 10px'}}>
           {NAV.map(n=>{
             const active=tab===n.id
@@ -947,9 +1036,9 @@ export default function AdminPage() {
             const showCount = (isAlertTab || isMachinesTab) && maintenanceMachines.length > 0
 
             return (
-              <button key={n.id} onClick={()=>setTab(n.id)} style={{
+              <button key={n.id} onClick={()=>{ setTab(n.id); setMobileNavOpen(false); }} style={{
                 width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 12px',
-                borderRadius:10,marginBottom:2,border:'none',cursor:'pointer',fontFamily:C.font,fontSize:13,fontWeight:active?700:500,
+                borderRadius:10,marginBottom:3,border:'none',cursor:'pointer',fontFamily:C.font,fontSize:13,fontWeight:active?700:500,
                 background:active?`linear-gradient(135deg,${C.goldL}22,${C.gold}22)`:' transparent',
                 color:active?C.goldL:C.muted,
                 borderLeft:active?`3px solid ${C.gold}`:'3px solid transparent',
@@ -980,19 +1069,19 @@ export default function AdminPage() {
           <p style={{color:C.muted,fontSize:11,marginBottom:6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{adminEmail}</p>
           <button onClick={async()=>{await supabase.auth.signOut();router.push('/')}} style={{...btnGhost,width:'100%',fontSize:11}}>Sign out</button>
         </div>
-      </div>
+      </aside>
 
-      {/* Main */}
-      <main style={{flex:1,marginLeft:220,padding:'32px',minHeight:'100vh'}}>
-        <div style={{maxWidth:1100}}>
+      {/* Main Content Area */}
+      <main className="admin-main">
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
           {/* Global Machine Alert Banner */}
           {maintenanceMachines.length > 0 && (
-            <div style={{
+            <div className="alert-banner" style={{
               background: 'linear-gradient(90deg, rgba(239,68,68,0.22) 0%, rgba(220,38,38,0.3) 50%, rgba(239,68,68,0.22) 100%)',
               border: '1px solid rgba(239,68,68,0.5)',
               borderRadius: 14,
               padding: '14px 20px',
-              marginBottom: 24,
+              marginBottom: 20,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -1004,14 +1093,14 @@ export default function AdminPage() {
                 <span style={{fontSize:24}}>🚨</span>
                 <div>
                   <div style={{color:'#FFFFFF',fontWeight:700,fontSize:14}}>
-                    CRITICAL FAULT DETECTED: {maintenanceMachines.length} Machine{maintenanceMachines.length > 1 ? 's' : ''} in Error State!
+                    CRITICAL FAULT: {maintenanceMachines.length} Machine{maintenanceMachines.length > 1 ? 's' : ''} in Error State!
                   </div>
                   <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>
                     {maintenanceMachines.map(m => `${m.machine_name} (${m.machine_code})`).join(', ')} entered safety maintenance mode.
                   </div>
                 </div>
               </div>
-              <div style={{display:'flex',gap:10}}>
+              <div>
                 <button
                   onClick={() => setTab('alerts')}
                   style={{...btnGold, padding:'8px 14px', fontSize:12}}
@@ -1027,8 +1116,110 @@ export default function AdminPage() {
       </main>
 
       <style>{`
-        @keyframes spin{to{transform:rotate(360deg)}}
-        *{box-sizing:border-box;margin:0;padding:0}
+        @keyframes spin { to { transform: rotate(360deg); } }
+        * { box-sizing: border-box; }
+
+        /* Desktop layout */
+        .admin-sidebar {
+          width: 240px;
+          background: #0A0806;
+          border-right: 1px solid rgba(200,146,42,0.14);
+          display: flex;
+          flex-direction: column;
+          position: fixed;
+          top: 0;
+          left: 0;
+          height: 100vh;
+          overflow-y: auto;
+          z-index: 50;
+          transition: transform 0.25s ease-in-out;
+        }
+        .admin-main {
+          flex: 1;
+          margin-left: 240px;
+          padding: 32px 36px;
+          min-height: 100vh;
+          width: calc(100% - 240px);
+        }
+        .mobile-header {
+          display: none;
+        }
+        .mobile-close-btn {
+          display: none;
+        }
+        .sidebar-backdrop {
+          display: none;
+        }
+
+        /* Mobile layout (<= 768px) */
+        @media (max-width: 768px) {
+          .admin-sidebar {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 280px !important;
+            transform: translateX(-100%);
+            box-shadow: 6px 0 24px rgba(0,0,0,0.9);
+          }
+          .admin-sidebar.open {
+            transform: translateX(0);
+          }
+          .mobile-close-btn {
+            display: block !important;
+          }
+          .sidebar-backdrop {
+            display: block !important;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(4px);
+            z-index: 45;
+          }
+          .mobile-header {
+            display: flex !important;
+            align-items: center;
+            justifyContent: space-between;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 58px;
+            background: rgba(10, 8, 6, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(200, 146, 42, 0.14);
+            padding: 0 16px;
+            z-index: 40;
+          }
+          .admin-main {
+            margin-left: 0 !important;
+            width: 100% !important;
+            padding: 16px 14px 40px !important;
+            padding-top: 74px !important;
+          }
+          .kpi-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 10px !important;
+          }
+          .chart-grid {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .filter-row {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .filter-row input, .filter-row select, .filter-row button {
+            width: 100% !important;
+          }
+          .alert-banner {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .alert-banner button {
+            width: 100% !important;
+          }
+        }
       `}</style>
     </div>
   )

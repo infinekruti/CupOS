@@ -100,6 +100,14 @@ html, body {
   background: #0D0A08;
 }
 
+/* Allow full width for admin console on both desktop and mobile */
+body.admin-mode .mobile-container,
+.mobile-container:has(.admin-container) {
+  max-width: 100% !important;
+  margin: 0 !important;
+  width: 100% !important;
+}
+
 /* Swiper dots */
 .swipe-dot {
   width: 6px;
