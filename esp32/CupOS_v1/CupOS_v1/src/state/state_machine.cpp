@@ -68,6 +68,7 @@ void StateMachine::update() {
             
             // Force shutter to close if it was left open during a power outage
             if (!_engine->closeShutter()) {
+                if (_net) _net->reportMachineError("SHUTTER_HOMING_FAILED", "Shutter failed to close during startup self-test");
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 diagnostics.error(ModuleID::System, "[SM] Shutter Homing Failed!");
@@ -92,7 +93,7 @@ void StateMachine::update() {
                     if (_net->isConnected()) {
                         displayManager.showIdleScreen("https://cupos.in");
                     } else {
-                        displayManager.showMessage("Network Error");
+                        displayManager.showMessage("Network Error\nCheck SIM/Signal");
                     }
                 }
             }
@@ -115,10 +116,13 @@ void StateMachine::update() {
         case CupOSState::CupDispense:
             // SAFETY: Guarantee the door is fully shut before anything drops!
             if (!_engine->closeShutter()) {
-                if (_net && _currentToken.length() > 0) {
-                    displayManager.showMessage("Door Error!\nRefunding token...");
-                    _net->rollbackOrder(_currentToken, "door_close_failed");
-                    _currentToken = "";
+                if (_net) {
+                    _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close before cup drop");
+                    if (_currentToken.length() > 0) {
+                        displayManager.showMessage("Door Error!\nRefunding token...");
+                        _net->rollbackOrder(_currentToken, "door_close_failed");
+                        _currentToken = "";
+                    }
                 }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
@@ -137,11 +141,14 @@ void StateMachine::update() {
                 }
             }
             if (!_engine->dispenseCup()) {
-                if (_net && _currentToken.length() > 0) {
-                    diagnostics.warning(ModuleID::System, "Dispense cup failed. Rolling back token...");
-                    displayManager.showMessage("Cup Jam!\nRefunding token...");
-                    _net->rollbackOrder(_currentToken, "cup_dispense_failed");
-                    _currentToken = "";
+                if (_net) {
+                    _net->reportMachineError("CUP_JAM", "Cup failed to drop after 5 attempts");
+                    if (_currentToken.length() > 0) {
+                        diagnostics.warning(ModuleID::System, "Dispense cup failed. Rolling back token...");
+                        displayManager.showMessage("Cup Jam!\nRefunding token...");
+                        _net->rollbackOrder(_currentToken, "cup_dispense_failed");
+                        _currentToken = "";
+                    }
                 }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
@@ -174,10 +181,13 @@ void StateMachine::update() {
 
         case CupOSState::ShutterOpen:
             if (!_engine->openShutter()) {
-                if (_net && _currentToken.length() > 0) {
-                    displayManager.showMessage("Door Error!\nRefunding token...");
-                    _net->rollbackOrder(_currentToken, "door_jam_open");
-                    _currentToken = "";
+                if (_net) {
+                    _net->reportMachineError("DOOR_JAM_OPEN", "Door failed to open after beverage preparation");
+                    if (_currentToken.length() > 0) {
+                        displayManager.showMessage("Door Error!\nRefunding token...");
+                        _net->rollbackOrder(_currentToken, "door_jam_open");
+                        _currentToken = "";
+                    }
                 }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
@@ -222,6 +232,7 @@ void StateMachine::update() {
 
         case CupOSState::ShutterClose:
             if (!_engine->closeShutter()) {
+                if (_net) _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close after cup removed");
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 displayManager.showMessage("Out of Order (Door)");
@@ -237,6 +248,7 @@ void StateMachine::update() {
 
         case CupOSState::ShutterCloseAbandoned:
             if (!_engine->closeShutter()) {
+                if (_net) _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close after cup abandoned");
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
                 displayManager.showMessage("Out of Order (Door)");
@@ -251,17 +263,27 @@ void StateMachine::update() {
             break;
 
         case CupOSState::Error:
-            // Stay in error state indefinitely, wait for admin reboot
+            // Stay in error state indefinitely, periodically report status every 5 minutes
+            {
+                static uint32_t lastErrorReportMs = 0;
+                if (millis() - lastErrorReportMs >= 300000) {
+                    lastErrorReportMs = millis();
+                    if (_net) _net->reportMachineError("MACHINE_IN_ERROR_STATE", "Machine is halted in Error state awaiting maintenance");
+                }
+            }
             break;
 
         case CupOSState::Collect:
             // State used to clear an abandoned cup before a new order
             displayManager.showMessage("Opening Door...");
             if (!_engine->openShutter()) {
-                if (_net && _currentToken.length() > 0) {
-                    displayManager.showMessage("Door Jam!\nRefunding token...");
-                    _net->rollbackOrder(_currentToken, "door_jam_open");
-                    _currentToken = "";
+                if (_net) {
+                    _net->reportMachineError("DOOR_JAM_OPEN", "Door failed to open during cup collection");
+                    if (_currentToken.length() > 0) {
+                        displayManager.showMessage("Door Jam!\nRefunding token...");
+                        _net->rollbackOrder(_currentToken, "door_jam_open");
+                        _currentToken = "";
+                    }
                 }
                 _state = CupOSState::Error;
                 _stateStartMs = millis();
@@ -284,10 +306,13 @@ void StateMachine::update() {
                     // Cup was successfully removed!
                     displayManager.showMessage("Thank you!\nStarting order...");
                     if (!_engine->closeShutter()) {
-                        if (_net && _currentToken.length() > 0) {
-                            displayManager.showMessage("Door Error!\nRefunding token...");
-                            _net->rollbackOrder(_currentToken, "door_close_failed");
-                            _currentToken = "";
+                        if (_net) {
+                            _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close after old cup cleared");
+                            if (_currentToken.length() > 0) {
+                                displayManager.showMessage("Door Error!\nRefunding token...");
+                                _net->rollbackOrder(_currentToken, "door_close_failed");
+                                _currentToken = "";
+                            }
                         }
                         _state = CupOSState::Error;
                         _stateStartMs = millis();

@@ -21,13 +21,20 @@ Network::Network(const char* host, uint16_t port)
 void Network::begin() {
     diagnostics.info(ModuleID::System, "Initializing GSM...");
     
-    // Begin AT serial
-    SerialAT.begin(115200, SERIAL_8N1, GSM_RX, GSM_TX);
+    // Begin AT serial if not already running
+    static bool serialStarted = false;
+    if (!serialStarted) {
+        SerialAT.begin(115200, SERIAL_8N1, GSM_RX, GSM_TX);
+        serialStarted = true;
+    }
     
-    delay(3000);
-    // Force flight mode off automatically during boot
+    delay(1000);
+    esp_task_wdt_reset();
+
+    // Ensure full phone functionality (turn off flight mode)
     SerialAT.println("AT+CFUN=1");
-    delay(2000);
+    delay(1000);
+    esp_task_wdt_reset();
     
     if (!modem.init()) {
         diagnostics.error(ModuleID::System, "Failed to initialize GSM modem");
@@ -37,20 +44,48 @@ void Network::begin() {
     String modemInfo = modem.getModemInfo();
     diagnostics.info(ModuleID::System, (String("Modem Info: ") + modemInfo).c_str());
     
-    diagnostics.info(ModuleID::System, "Waiting for network...");
-    if (!modem.waitForNetwork(10000L)) {
-        diagnostics.error(ModuleID::System, "Network failed to connect");
+    // Wait for cellular network registration (up to 60s, WDT-safe)
+    diagnostics.info(ModuleID::System, "Waiting for network (up to 60s)...");
+    uint32_t startMs = millis();
+    bool registered = false;
+    while (millis() - startMs < 60000L) {
+        esp_task_wdt_reset();
+        if (modem.isNetworkConnected()) {
+            registered = true;
+            break;
+        }
+        delay(1000);
+    }
+    
+    if (!registered) {
+        int16_t csq = modem.getSignalQuality();
+        diagnostics.error(ModuleID::System, (String("Network registration failed! Signal CSQ: ") + String(csq)).c_str());
         return;
     }
     
+    int16_t csq = modem.getSignalQuality();
+    diagnostics.info(ModuleID::System, (String("Network Registered! Signal CSQ: ") + String(csq)).c_str());
+    
+    // Connect to APN with multi-carrier fallback (Airtel, Jio, Vi)
     diagnostics.info(ModuleID::System, "Connecting to APN...");
-    // Replace with real APN
-    if (!modem.gprsConnect("internet", "", "")) {
-        diagnostics.error(ModuleID::System, "APN connection failed");
+    const char* apns[] = { "internet", "airtelgprs.com", "jionet", "www" };
+    bool gprsConnected = false;
+    for (const char* apn : apns) {
+        esp_task_wdt_reset();
+        diagnostics.info(ModuleID::System, (String("Trying APN: ") + apn).c_str());
+        if (modem.gprsConnect(apn, "", "")) {
+            gprsConnected = true;
+            diagnostics.info(ModuleID::System, (String("APN Connected: ") + apn).c_str());
+            break;
+        }
+    }
+    
+    if (!gprsConnected) {
+        diagnostics.error(ModuleID::System, "All APN connection attempts failed");
         return;
     }
     
-    diagnostics.info(ModuleID::System, "GSM Network Connected!");
+    diagnostics.info(ModuleID::System, "GSM Network Connected Successfully!");
 }
 
 bool Network::verifyOrder(const String& qrPayload, uint8_t& productId, uint16_t& durationMs, String& productName, bool& isHalf, String& failReason) {
@@ -270,6 +305,33 @@ bool Network::isConnected() {
 }
 
 void Network::reconnect() {
+    diagnostics.info(ModuleID::System, "Reconnecting GSM...");
+    
+    // Quick retry: if modem already sees network tower, try reconnecting APN
+    esp_task_wdt_reset();
+    if (!modem.isNetworkConnected()) {
+        diagnostics.info(ModuleID::System, "Waiting for network tower link...");
+        uint32_t startMs = millis();
+        while (millis() - startMs < 30000L) {
+            esp_task_wdt_reset();
+            if (modem.isNetworkConnected()) break;
+            delay(1000);
+        }
+    }
+    
+    if (modem.isNetworkConnected()) {
+        diagnostics.info(ModuleID::System, "Tower link OK, reconnecting APN...");
+        const char* apns[] = { "internet", "airtelgprs.com", "jionet", "www" };
+        for (const char* apn : apns) {
+            esp_task_wdt_reset();
+            if (modem.gprsConnect(apn, "", "")) {
+                diagnostics.info(ModuleID::System, (String("Reconnected to APN: ") + apn).c_str());
+                return;
+            }
+        }
+    }
+    
+    // Fall back to full reinitialization if quick reconnect didn't succeed
     begin();
 }
 
@@ -393,6 +455,71 @@ bool Network::rollbackOrder(const String& token, const String& reason) {
         diagnostics.info(ModuleID::System, "Rollback confirmed by server");
     } else {
         diagnostics.error(ModuleID::System, "Rollback request failed or timed out");
+    }
+    return success;
+}
+
+bool Network::reportMachineError(const String& errorCode, const String& details) {
+    if (!isConnected()) {
+        diagnostics.warning(ModuleID::System, "Alert: GSM Not Connected, attempting reconnect...");
+        reconnect();
+        if (!isConnected()) return false;
+    }
+
+    diagnostics.error(ModuleID::System, (String("Dispatching Machine Error Alert: ") + errorCode + " - " + details).c_str());
+
+    auto sendRawAT = [](const String& cmd, uint32_t waitMs = 1000) -> String {
+        SerialAT.println(cmd);
+        uint32_t startMs = millis();
+        String resp = "";
+        while (millis() - startMs < waitMs) {
+            while (SerialAT.available()) {
+                resp += (char)SerialAT.read();
+            }
+            if (cmd.indexOf("HTTPACTION") != -1) {
+                if (resp.indexOf("+HTTPACTION:") != -1) break;
+            } else {
+                if (resp.indexOf("OK\r\n") != -1 || resp.indexOf("ERROR\r\n") != -1) break;
+            }
+            esp_task_wdt_reset();
+            delay(10);
+        }
+        return resp;
+    };
+
+    String requestBody = "{\"machineId\":\"" + String(MACHINE_ID) + "\",\"secret\":\"" + String(MACHINE_SECRET_KEY) + "\",\"status\":\"maintenance\",\"errorCode\":\"" + errorCode + "\",\"details\":\"" + details + "\"}";
+
+    sendRawAT("AT+HTTPTERM");
+    sendRawAT("AT+CSSLCFG=\"ignoreretc\",0,1");
+    sendRawAT("AT+CSSLCFG=\"enableSNI\",0,1");
+    
+    if (sendRawAT("AT+HTTPINIT").indexOf("ERROR") != -1) {
+        diagnostics.error(ModuleID::System, "MachineAlert: HTTPINIT Failed");
+        return false;
+    }
+
+    sendRawAT("AT+HTTPPARA=\"SSLCFG\",0");
+    String url = String("https://") + _host + "/api/machine-alert";
+    sendRawAT("AT+HTTPPARA=\"URL\",\"" + url + "\"");
+    sendRawAT("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+    
+    SerialAT.println("AT+HTTPDATA=" + String(requestBody.length()) + ",5000");
+    delay(100);
+    while (SerialAT.available()) SerialAT.read();
+    
+    SerialAT.print(requestBody);
+    delay(500);
+    while (SerialAT.available()) SerialAT.read();
+
+    String actionResp = sendRawAT("AT+HTTPACTION=1", 10000);
+    sendRawAT("AT+HTTPTERM");
+
+    bool success = actionResp.indexOf("+HTTPACTION: 1,200") != -1;
+    if (success) {
+        _lastCommTime = millis();
+        diagnostics.info(ModuleID::System, "Machine Alert received by server!");
+    } else {
+        diagnostics.error(ModuleID::System, "Machine Alert failed or timed out");
     }
     return success;
 }

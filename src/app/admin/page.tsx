@@ -1,11 +1,12 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────
 type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number; totalWalletCredit:number; productStats:{name:string;full:number;half:number;total:number}[]; sizeStats:{full:number;half:number}; revenueTrend:{date:string;revenue:number}[] }
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
+type AlertItem = { id:string; machineId:string; errorCode:string; details?:string; timestamp:string; resolved:boolean }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
 type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; allow_half:boolean; half_price:number }
@@ -172,18 +173,30 @@ function DashboardSection() {
 }
 
 // ── Machines ──────────────────────────────────────────────────
-function MachinesSection() {
-  const [machines,setMachines]=useState<Machine[]>([])
-  const load=useCallback(()=>{ fetch('/api/admin/machines').then(r=>r.json()).then(d=>setMachines(d.machines??[])) },[])
-  useEffect(()=>{ load() },[load])
-  const toggle=async(m:Machine)=>{
-    const next=m.status==='online'?'offline':'online'
-    await fetch('/api/admin/machines',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({machineId:m.id,status:next})})
-    load()
+function MachinesSection({ machines, onRefresh }:{ machines:Machine[]; onRefresh:()=>void }) {
+  const toggle = async (m:Machine) => {
+    // If in maintenance or offline, enabling sets it to online. If online, disables to offline.
+    const next = m.status === 'online' ? 'offline' : 'online'
+    await fetch('/api/admin/machines', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ machineId: m.id, status: next })
+    })
+    onRefresh()
   }
+
+  const getStatusBadge = (status: string) => {
+    if (status === 'online') return <span style={badge(C.green)}>ONLINE</span>
+    if (status === 'maintenance') return <span style={{ ...badge(C.red), boxShadow: `0 0 8px ${C.red}66` }}>MAINTENANCE (ERROR)</span>
+    return <span style={badge(C.yellow)}>OFFLINE</span>
+  }
+
   return (
     <div>
-      <h2 style={{color:C.cream,fontSize:22,fontWeight:700,marginBottom:20}}>Machine Management</h2>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Machine Management</h2>
+        <button onClick={onRefresh} style={btnGhost}>↻ Refresh</button>
+      </div>
       <div style={{overflowX:'auto',...card,padding:0}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
           <thead><tr style={{color:C.muted,background:'rgba(255,255,255,0.02)'}}>
@@ -192,20 +205,204 @@ function MachinesSection() {
             ))}
           </tr></thead>
           <tbody>{machines.map(m=>(
-            <tr key={m.id} style={{borderTop:`1px solid rgba(255,255,255,0.04)`}}>
+            <tr key={m.id} style={{borderTop:`1px solid rgba(255,255,255,0.04)`, background: m.status === 'maintenance' ? 'rgba(239,68,68,0.06)' : undefined}}>
               <td style={{padding:'12px 16px',color:C.cream,fontFamily:'monospace',fontSize:12}}>{m.machine_code}</td>
               <td style={{padding:'12px 16px',color:C.cream,fontWeight:600}}>{m.machine_name}</td>
               <td style={{padding:'12px 16px',color:C.muted}}>{m.location}</td>
-              <td style={{padding:'12px 16px'}}><span style={badge(m.status==='online'?C.green:C.red)}>{m.status}</span></td>
+              <td style={{padding:'12px 16px'}}>{getStatusBadge(m.status)}</td>
               <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>{m.last_seen?ago(m.last_seen):'Never'}</td>
               <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>{m.firmware_version??'—'}</td>
               <td style={{padding:'12px 16px'}}>
-                <button onClick={()=>toggle(m)} style={{...btnGhost,color:m.status==='online'?C.red:C.green}}>
-                  {m.status==='online'?'Disable':'Enable'}
+                <button
+                  onClick={()=>toggle(m)}
+                  style={{
+                    ...btnGhost,
+                    color: m.status === 'online' ? C.red : C.green,
+                    borderColor: m.status === 'maintenance' ? C.green : undefined,
+                    fontWeight: m.status === 'maintenance' ? 700 : undefined,
+                  }}
+                >
+                  {m.status === 'online' ? 'Disable' : (m.status === 'maintenance' ? 'Resolve (Set Online)' : 'Enable')}
                 </button>
               </td>
             </tr>
           ))}</tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Alerts & Fault Management ──────────────────────────────────
+function AlertsSection({ machines, alerts, onRefresh }:{ machines:Machine[]; alerts:AlertItem[]; onRefresh:()=>void }) {
+  const [resolving, setResolving] = useState<string|null>(null)
+
+  const handleResolve = async (machine: Machine) => {
+    setResolving(machine.id)
+    try {
+      await fetch('/api/machine-alert', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ machineId: machine.machine_code, machineDbId: machine.id }),
+      })
+      onRefresh()
+    } finally {
+      setResolving(null)
+    }
+  }
+
+  const maintenanceMachines = machines.filter(m => m.status === 'maintenance')
+  const offlineMachines = machines.filter(m => m.status === 'offline')
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Alerts & Hardware Fault Management</h2>
+          <p style={{color:C.muted,fontSize:13,marginTop:4}}>Live diagnostic status from vending machine microcontrollers</p>
+        </div>
+        <button onClick={onRefresh} style={btnGhost}>↻ Refresh Status</button>
+      </div>
+
+      {/* Active Critical Alerts */}
+      {maintenanceMachines.length > 0 ? (
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{color:C.red,fontSize:13,fontWeight:700,letterSpacing:1,textTransform:'uppercase',display:'flex',alignItems:'center',gap:8}}>
+            <span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:C.red,boxShadow:`0 0 10px ${C.red}`}} />
+            Active Machine Faults ({maintenanceMachines.length})
+          </div>
+          {maintenanceMachines.map(m => {
+            const machineAlert = alerts.find(a => a.machineId === m.machine_code && !a.resolved)
+            return (
+              <div key={m.id} style={{
+                background:'rgba(239,68,68,0.08)',
+                border:'1px solid rgba(239,68,68,0.3)',
+                borderRadius:16,
+                padding:'20px 24px',
+                display:'flex',
+                justifyContent:'space-between',
+                alignItems:'center',
+                flexWrap:'wrap',
+                gap:16,
+              }}>
+                <div style={{display:'flex',gap:16,alignItems:'flex-start'}}>
+                  <div style={{fontSize:32,lineHeight:1}}>🚨</div>
+                  <div>
+                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+                      <span style={{color:'#FFFFFF',fontSize:18,fontWeight:700}}>{m.machine_name}</span>
+                      <span style={{fontFamily:'monospace',fontSize:12,color:C.muted,background:'rgba(255,255,255,0.06)',padding:'2px 8px',borderRadius:6}}>{m.machine_code}</span>
+                      <span style={badge(C.red)}>HARDWARE HALTED</span>
+                    </div>
+                    <p style={{color:C.cream,fontSize:14,marginBottom:6}}>
+                      <strong style={{color:C.goldL}}>Fault: </strong>
+                      {machineAlert ? `${machineAlert.errorCode} — ${machineAlert.details}` : 'Machine entered safety Error State (Door jam, sensor timeout, or cup drop failure)'}
+                    </p>
+                    <div style={{display:'flex',gap:16,color:C.muted,fontSize:12}}>
+                      <span>📍 {m.location}</span>
+                      <span>⏱ Reported: {m.last_seen ? ago(m.last_seen) : 'Recently'}</span>
+                      <span>📟 Firmware: v{m.firmware_version || '1.0.0'}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:10}}>
+                  <button
+                    disabled={resolving === m.id}
+                    onClick={() => handleResolve(m)}
+                    style={{
+                      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '10px 18px',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(34,197,94,0.3)',
+                    }}
+                  >
+                    {resolving === m.id ? 'Resolving...' : '✓ Mark Resolved & Set Online'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div style={{
+          background:'rgba(34,197,94,0.06)',
+          border:'1px solid rgba(34,197,94,0.2)',
+          borderRadius:16,
+          padding:'24px',
+          display:'flex',
+          alignItems:'center',
+          gap:16,
+        }}>
+          <div style={{fontSize:28}}>✅</div>
+          <div>
+            <p style={{color:'#FFFFFF',fontWeight:700,fontSize:16}}>All Systems Operational</p>
+            <p style={{color:C.muted,fontSize:13,marginTop:2}}>No machines currently in maintenance or error state. Microcontrollers are running normally.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Machines Notification if any */}
+      {offlineMachines.length > 0 && (
+        <div style={{...card}}>
+          <div style={{color:C.yellow,fontSize:12,fontWeight:700,letterSpacing:1,textTransform:'uppercase',marginBottom:12}}>
+            Offline Machines ({offlineMachines.length})
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {offlineMachines.map(m => (
+              <div key={m.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                <div>
+                  <span style={{color:C.cream,fontWeight:600,marginRight:8}}>{m.machine_name}</span>
+                  <span style={{color:C.muted,fontSize:12}}>({m.machine_code} • {m.location})</span>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:12}}>
+                  <span style={{color:C.muted,fontSize:12}}>{m.last_seen ? `Last seen ${ago(m.last_seen)}` : 'Never connected'}</span>
+                  <span style={badge(C.yellow)}>OFFLINE</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Alert Log History */}
+      <div style={{...card,padding:0,overflowX:'auto'}}>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.04)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <p style={{color:C.cream,fontSize:14,fontWeight:600}}>Hardware Alert Audit Log</p>
+          <span style={{color:C.muted,fontSize:11}}>{alerts.length} event(s) recorded</span>
+        </div>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+          <thead><tr style={{color:C.muted,background:'rgba(255,255,255,0.02)'}}>
+            {['Time','Machine ID','Error Code','Diagnostic Details','Status'].map(h=>(
+              <th key={h} style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {alerts.length > 0 ? (
+              alerts.map(a => (
+                <tr key={a.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                  <td style={{padding:'11px 16px',color:C.muted,fontSize:12}}>{fmt(a.timestamp)}</td>
+                  <td style={{padding:'11px 16px',color:C.cream,fontFamily:'monospace',fontSize:12}}>{a.machineId}</td>
+                  <td style={{padding:'11px 16px',color:C.red,fontWeight:700,fontFamily:'monospace'}}>{a.errorCode}</td>
+                  <td style={{padding:'11px 16px',color:C.muted,fontSize:12}}>{a.details || '—'}</td>
+                  <td style={{padding:'11px 16px'}}>
+                    <span style={badge(a.resolved ? C.green : C.red)}>
+                      {a.resolved ? 'RESOLVED' : 'ACTIVE'}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} style={{padding:'24px',textAlign:'center',color:C.muted}}>
+                  No hardware alerts reported yet. Normal operations.
+                </td>
+              </tr>
+            )}
+          </tbody>
         </table>
       </div>
     </div>
@@ -521,6 +718,20 @@ export default function AdminPage() {
   const [ready, setReady] = useState(false)
   const [denied, setDenied] = useState(false)
   const [adminEmail, setAdminEmail] = useState('')
+  const [machines, setMachines] = useState<Machine[]>([])
+  const [alerts, setAlerts] = useState<AlertItem[]>([])
+
+  const loadMachinesAndAlerts = useCallback(() => {
+    fetch(`/api/admin/machines?_t=${Date.now()}`)
+      .then(r => r.json())
+      .then(d => setMachines(d.machines ?? []))
+      .catch(console.error)
+
+    fetch(`/api/machine-alert?_t=${Date.now()}`)
+      .then(r => r.json())
+      .then(d => setAlerts(d.alerts ?? []))
+      .catch(console.error)
+  }, [])
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
@@ -538,11 +749,14 @@ export default function AdminPage() {
       if (!user) { router.push('/'); return }
 
       // Check specific email or phone against comma-separated list
-      const allowedList = allowed.split(',').map(s => s.trim())
+      const allowedList = allowed.split(',').map(s => s.trim().toLowerCase())
       
+      const userEmail = user.email?.trim().toLowerCase()
+      const userPhone = user.phone?.trim()
+
       const hasAccess = 
-        (user.email && allowedList.includes(user.email)) || 
-        (user.phone && allowedList.includes(user.phone))
+        (userEmail && allowedList.includes(userEmail)) || 
+        (userPhone && allowedList.includes(userPhone))
 
       if (hasAccess) {
         setAdminEmail(user.email || user.phone || 'Admin')
@@ -552,6 +766,43 @@ export default function AdminPage() {
       }
     })
   },[router])
+
+  // Polling for machine status & error alerts every 15 seconds
+  useEffect(() => {
+    if (ready) {
+      loadMachinesAndAlerts()
+      const interval = setInterval(loadMachinesAndAlerts, 15000)
+      return () => clearInterval(interval)
+    }
+  }, [ready, loadMachinesAndAlerts])
+
+  // Gentle audio chime when a machine enters error state
+  const prevMaintenanceCount = useRef(0)
+  useEffect(() => {
+    const maintenanceCount = machines.filter(m => m.status === 'maintenance').length
+    if (maintenanceCount > prevMaintenanceCount.current && prevMaintenanceCount.current >= 0) {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+        if (AudioCtx) {
+          const ctx = new AudioCtx()
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.type = 'triangle'
+          osc.frequency.setValueAtTime(587.33, ctx.currentTime) // D5
+          osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15) // A5
+          gain.gain.setValueAtTime(0.3, ctx.currentTime)
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5)
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          osc.start()
+          osc.stop(ctx.currentTime + 0.5)
+        }
+      } catch (e) {
+        // Autoplay policy restriction catch
+      }
+    }
+    prevMaintenanceCount.current = maintenanceCount
+  }, [machines])
 
   if (denied) return (
     <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:C.bg,fontFamily:C.font,gap:16}}>
@@ -569,6 +820,8 @@ export default function AdminPage() {
     </div>
   )
 
+  const maintenanceMachines = machines.filter(m => m.status === 'maintenance')
+
   const PLACEHOLDER_SECTIONS: Record<string, {title:string;desc:string;items:{icon:string;label:string;note:string}[]}> = {
     inventory: { title:'Inventory Management', desc:'Real-time stock levels per machine. Requires inventory table — run admin_extensions.sql.',
       items:[
@@ -578,16 +831,6 @@ export default function AdminPage() {
         {icon:'🍫',label:'Chocolate Mix',note:'% remaining for hot chocolate machines'},
         {icon:'💧',label:'Water Status',note:'Water level sensor integration'},
         {icon:'🔄',label:'Mark Refilled',note:'Log refill events with timestamp & staff ID'},
-      ]
-    },
-    alerts: { title:'Alerts & Fault Management', desc:'Machine health alerts by severity level.',
-      items:[
-        {icon:'🔴',label:'Machine Offline',note:'Critical: Machine unreachable for >5 min'},
-        {icon:'🟡',label:'Cup Empty',note:'Warning: Cup count below threshold'},
-        {icon:'🟡',label:'Water Low',note:'Warning: Water sensor triggered'},
-        {icon:'🟡',label:'Ingredient Low',note:'Warning: Premix below 20%'},
-        {icon:'🔴',label:'Sensor Failure',note:'Critical: Sensor hardware error'},
-        {icon:'🔵',label:'Payment Failure',note:'Info: Failed payment attempt logged'},
       ]
     },
     events: { title:'Event Logs', desc:'Every machine event stored for audit and troubleshooting.',
@@ -633,10 +876,11 @@ export default function AdminPage() {
   const renderContent = () => {
     if (tab==='dashboard')    return <DashboardSection/>
     if (tab==='products')     return <ProductsSection/>
-    if (tab==='machines')     return <MachinesSection/>
+    if (tab==='machines')     return <MachinesSection machines={machines} onRefresh={loadMachinesAndAlerts}/>
     if (tab==='transactions') return <TransactionsSection/>
     if (tab==='tokens')       return <TokensSection/>
     if (tab==='customers')    return <CustomersSection/>
+    if (tab==='alerts')       return <AlertsSection machines={machines} alerts={alerts} onRefresh={loadMachinesAndAlerts}/>
     const ph = PLACEHOLDER_SECTIONS[tab]
     if (ph) return <PlaceholderSection {...ph}/>
     return null
@@ -657,17 +901,36 @@ export default function AdminPage() {
         <nav style={{flex:1,padding:'0 10px'}}>
           {NAV.map(n=>{
             const active=tab===n.id
+            const isAlertTab = n.id === 'alerts'
+            const isMachinesTab = n.id === 'machines'
+            const showCount = (isAlertTab || isMachinesTab) && maintenanceMachines.length > 0
+
             return (
               <button key={n.id} onClick={()=>setTab(n.id)} style={{
-                width:'100%',display:'flex',alignItems:'center',gap:10,padding:'10px 12px',
+                width:'100%',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 12px',
                 borderRadius:10,marginBottom:2,border:'none',cursor:'pointer',fontFamily:C.font,fontSize:13,fontWeight:active?700:500,
                 background:active?`linear-gradient(135deg,${C.goldL}22,${C.gold}22)`:' transparent',
                 color:active?C.goldL:C.muted,
                 borderLeft:active?`3px solid ${C.gold}`:'3px solid transparent',
                 transition:'all 0.15s',
               }}>
-                <span style={{fontSize:15,width:18,textAlign:'center'}}>{n.icon}</span>
-                {n.label}
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:15,width:18,textAlign:'center'}}>{n.icon}</span>
+                  {n.label}
+                </div>
+                {showCount && (
+                  <span style={{
+                    background: C.red,
+                    color: '#FFFFFF',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    padding: '1px 6px',
+                    borderRadius: 10,
+                    boxShadow: `0 0 8px ${C.red}`,
+                  }}>
+                    {maintenanceMachines.length}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -681,11 +944,51 @@ export default function AdminPage() {
       {/* Main */}
       <main style={{flex:1,marginLeft:220,padding:'32px',minHeight:'100vh'}}>
         <div style={{maxWidth:1100}}>
+          {/* Global Machine Alert Banner */}
+          {maintenanceMachines.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(90deg, rgba(239,68,68,0.22) 0%, rgba(220,38,38,0.3) 50%, rgba(239,68,68,0.22) 100%)',
+              border: '1px solid rgba(239,68,68,0.5)',
+              borderRadius: 14,
+              padding: '14px 20px',
+              marginBottom: 24,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 12,
+              boxShadow: '0 4px 20px rgba(239,68,68,0.15)',
+            }}>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <span style={{fontSize:24}}>🚨</span>
+                <div>
+                  <div style={{color:'#FFFFFF',fontWeight:700,fontSize:14}}>
+                    CRITICAL FAULT DETECTED: {maintenanceMachines.length} Machine{maintenanceMachines.length > 1 ? 's' : ''} in Error State!
+                  </div>
+                  <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>
+                    {maintenanceMachines.map(m => `${m.machine_name} (${m.machine_code})`).join(', ')} entered safety maintenance mode.
+                  </div>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:10}}>
+                <button
+                  onClick={() => setTab('alerts')}
+                  style={{...btnGold, padding:'8px 14px', fontSize:12}}
+                >
+                  View Alerts Console →
+                </button>
+              </div>
+            </div>
+          )}
+
           {renderContent()}
         </div>
       </main>
 
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}} *{box-sizing:border-box;margin:0;padding:0}`}</style>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        *{box-sizing:border-box;margin:0;padding:0}
+      `}</style>
     </div>
   )
 }

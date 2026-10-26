@@ -10,6 +10,7 @@ public:
     bool verifyOrder(const String& qrPayload, uint8_t& productId, uint16_t& durationMs, String& productName, bool& isHalf, String& failReason);
     bool sendHeartbeat();
     bool rollbackOrder(const String& token, const String& reason);
+    bool reportMachineError(const String& errorCode, const String& details);
     bool isConnected();
     void reconnect();
     uint32_t getLastCommTime() const { return _lastCommTime; }
