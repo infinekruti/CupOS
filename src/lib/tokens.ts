@@ -78,7 +78,7 @@ export async function validateAndRedeemToken(params: {
   if (tokenData.status !== 'UNUSED') return { success: false, reason: 'Token invalid' }
 
   // 3. Atomically mark as redeemed (optimistic lock via status check in WHERE)
-  const { error: updateError, count } = await supabaseAdmin
+  const { data: updatedRows, error: updateError } = await supabaseAdmin
     .from('tokens')
     .update({
       status: 'REDEEMED',
@@ -87,9 +87,9 @@ export async function validateAndRedeemToken(params: {
     })
     .eq('id', tokenData.id)
     .eq('status', 'UNUSED') // Atomic guard — only update if still UNUSED
-    .select()
+    .select('id')
 
-  if (updateError || count === 0) {
+  if (updateError || !updatedRows || updatedRows.length === 0) {
     return { success: false, reason: 'Token already used' }
   }
 
@@ -155,12 +155,31 @@ export async function rollbackToken(params: {
   console.warn(`[rollbackToken] Rolled back token ${token} on machine ${machineCode}. Reason: ${reason || 'unspecified'}`)
 
   // 3. Update machine status and record maintenance if hardware failure
+  const isHardwareFailure = (
+    reason === 'cup_dispense_failed' ||
+    reason === 'door_jam_open' ||
+    reason === 'door_close_failed'
+  )
+
+  const { data: currentM } = await supabaseAdmin
+    .from('machines')
+    .select('status')
+    .eq('id', machine.id)
+    .maybeSingle()
+
+  const machineUpdate: Record<string, any> = {
+    last_seen: new Date().toISOString(),
+  }
+
+  if (isHardwareFailure) {
+    machineUpdate.status = 'maintenance'
+  } else if (currentM?.status !== 'maintenance') {
+    machineUpdate.status = 'online'
+  }
+
   await supabaseAdmin
     .from('machines')
-    .update({
-      last_seen: new Date().toISOString(),
-      status: (reason === 'cup_dispense_failed' || reason === 'door_jam_open') ? 'maintenance' : 'online',
-    })
+    .update(machineUpdate)
     .eq('id', machine.id)
 
   return { success: true }

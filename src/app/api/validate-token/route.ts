@@ -29,10 +29,23 @@ export async function POST(req: NextRequest) {
 
     const result = await validateAndRedeemToken({ token, machineCode: machineId })
 
-    // Update machine last_seen on every validation attempt
+    // Update machine last_seen on every validation attempt, preserving 'maintenance' status
+    const { data: currentMachine } = await supabaseAdmin
+      .from('machines')
+      .select('status')
+      .eq('machine_code', machineId)
+      .maybeSingle()
+
+    const updatePayload: Record<string, any> = {
+      last_seen: new Date().toISOString(),
+    }
+    if (currentMachine?.status !== 'maintenance') {
+      updatePayload.status = 'online'
+    }
+
     await supabaseAdmin
       .from('machines')
-      .update({ last_seen: new Date().toISOString(), status: 'online' })
+      .update(updatePayload)
       .eq('machine_code', machineId)
 
     return NextResponse.json(result, { status: result.success ? 200 : 200 })
