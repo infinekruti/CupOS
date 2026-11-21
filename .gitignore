@@ -33,3 +33,7 @@ yarn-error.log*
 # firmware
 .pio/
 *.tsbuildinfo
+
+# local data
+.data/
+

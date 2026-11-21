@@ -27,6 +27,28 @@ void StateMachine::triggerFlush() {
     _engine->flushMachine();
 }
 
+void StateMachine::triggerError(const String& errorCode, const String& details, const String& rollbackReason) {
+    _lastErrorCode = errorCode;
+    _lastErrorDetails = details;
+    _lastErrorReportMs = millis(); // Reset periodic timer
+
+    diagnostics.error(ModuleID::System, (String("[SM] Error Triggered: ") + errorCode + " - " + details).c_str());
+
+    if (_net) {
+        _net->reportMachineError(errorCode, details);
+        if (_currentToken.length() > 0 && rollbackReason.length() > 0) {
+            diagnostics.warning(ModuleID::System, (String("[SM] Refunding token: ") + _currentToken).c_str());
+            _net->rollbackOrder(_currentToken, rollbackReason);
+            _currentToken = "";
+        }
+    }
+
+    _state = CupOSState::Error;
+    _stateStartMs = millis();
+    displayManager.showMessage((String("Out of Order\n") + errorCode).c_str());
+    _engine->playSound("/error_jam.wav");
+}
+
 bool StateMachine::processQR() {
     if (_qr && _qr->available()) {
         Serial.println(">>> QR SCAN INITIATED - BYTES DETECTED <<<");
@@ -88,12 +110,7 @@ void StateMachine::update() {
             
             // Force shutter to close if it was left open during a power outage
             if (!_engine->closeShutter()) {
-                if (_net) _net->reportMachineError("SHUTTER_HOMING_FAILED", "Shutter failed to close during startup self-test");
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                diagnostics.error(ModuleID::System, "[SM] Shutter Homing Failed!");
-                displayManager.showMessage("Out of Order (Jam)");
-                _engine->playSound("/error_jam.wav"); // Play sound alert
+                triggerError("SHUTTER_HOMING_FAILED", "Shutter failed to close during startup self-test");
             } else {
                 _state = CupOSState::Idle;
                 _stateStartMs = millis();
@@ -112,7 +129,7 @@ void StateMachine::update() {
             {
                 const uint32_t FLUSH_INTERVAL_MS = 2UL * 60UL * 60UL * 1000UL; // 2 hours
                 if (_drinksSinceLastFlush >= 1 && (millis() - _lastFlushTime >= FLUSH_INTERVAL_MS)) {
-                    diagnostics.info(ModuleID::System, "[SM] 2-Hour Auto-Flush Triggered (Drinks served since last flush: %d)", _drinksSinceLastFlush);
+                    diagnostics.info(ModuleID::System, (String("[SM] 2-Hour Auto-Flush Triggered (Drinks: ") + String(_drinksSinceLastFlush) + ")").c_str());
                     triggerFlush();
                     break;
                 }
@@ -151,18 +168,7 @@ void StateMachine::update() {
         case CupOSState::CupDispense:
             // SAFETY: Guarantee the door is fully shut before anything drops!
             if (!_engine->closeShutter()) {
-                if (_net) {
-                    _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close before cup drop");
-                    if (_currentToken.length() > 0) {
-                        displayManager.showMessage("Door Error!\nRefunding token...");
-                        _net->rollbackOrder(_currentToken, "door_close_failed");
-                        _currentToken = "";
-                    }
-                }
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                displayManager.showMessage("Out of Order (Door)");
-                _engine->playSound("/error_jam.wav");
+                triggerError("DOOR_CLOSE_FAILED", "Door failed to close before cup drop", "door_close_failed");
                 break;
             }
 
@@ -176,19 +182,7 @@ void StateMachine::update() {
                 }
             }
             if (!_engine->dispenseCup()) {
-                if (_net) {
-                    _net->reportMachineError("CUP_JAM", "Cup failed to drop after 5 attempts");
-                    if (_currentToken.length() > 0) {
-                        diagnostics.warning(ModuleID::System, "Dispense cup failed. Rolling back token...");
-                        displayManager.showMessage("Cup Jam!\nRefunding token...");
-                        _net->rollbackOrder(_currentToken, "cup_dispense_failed");
-                        _currentToken = "";
-                    }
-                }
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                displayManager.showMessage("Out of Order\n(Cup Error)");
-                _engine->playSound("/error_jam.wav"); // Play sound alert
+                triggerError("CUP_JAM", "Cup failed to drop after 5 attempts", "cup_dispense_failed");
             } else {
                 _state = CupOSState::BeveragePrep;
                 _stateStartMs = millis();
@@ -217,18 +211,7 @@ void StateMachine::update() {
 
         case CupOSState::ShutterOpen:
             if (!_engine->openShutter()) {
-                if (_net) {
-                    _net->reportMachineError("DOOR_JAM_OPEN", "Door failed to open after beverage preparation");
-                    if (_currentToken.length() > 0) {
-                        displayManager.showMessage("Door Error!\nRefunding token...");
-                        _net->rollbackOrder(_currentToken, "door_jam_open");
-                        _currentToken = "";
-                    }
-                }
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                displayManager.showMessage("Out of Order (Door)");
-                _engine->playSound("/error_jam.wav"); // Play sound alert
+                triggerError("DOOR_JAM_OPEN", "Door failed to open after beverage preparation", "door_jam_open");
             } else {
                 _currentToken = ""; // Dispense succeeded & drink accessible
                 _state = CupOSState::Ready;
@@ -268,11 +251,7 @@ void StateMachine::update() {
 
         case CupOSState::ShutterClose:
             if (!_engine->closeShutter()) {
-                if (_net) _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close after cup removed");
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                displayManager.showMessage("Out of Order (Door)");
-                _engine->playSound("/error_jam.wav"); // Play sound alert
+                triggerError("DOOR_CLOSE_FAILED", "Door failed to close after cup removed");
             } else {
                 _engine->playSound("/thank_you.wav"); // Play final thank you message
                 _state = CupOSState::Idle;
@@ -284,11 +263,7 @@ void StateMachine::update() {
 
         case CupOSState::ShutterCloseAbandoned:
             if (!_engine->closeShutter()) {
-                if (_net) _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close after cup abandoned");
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                displayManager.showMessage("Out of Order (Door)");
-                _engine->playSound("/error_jam.wav");
+                triggerError("DOOR_CLOSE_FAILED", "Door failed to close after cup abandoned");
             } else {
                 // NO thank you message here!
                 _state = CupOSState::Idle;
@@ -299,12 +274,14 @@ void StateMachine::update() {
             break;
 
         case CupOSState::Error:
-            // Stay in error state indefinitely, periodically report status every 5 minutes
-            {
-                static uint32_t lastErrorReportMs = 0;
-                if (millis() - lastErrorReportMs >= 300000) {
-                    lastErrorReportMs = millis();
-                    if (_net) _net->reportMachineError("MACHINE_IN_ERROR_STATE", "Machine is halted in Error state awaiting maintenance");
+            // Stay in error state indefinitely, periodically re-report the root error every 5 minutes
+            if (millis() - _lastErrorReportMs >= 300000) {
+                _lastErrorReportMs = millis();
+                if (_net) {
+                    _net->reportMachineError(
+                        _lastErrorCode.length() > 0 ? _lastErrorCode : "HARDWARE_ERROR",
+                        _lastErrorDetails.length() > 0 ? (_lastErrorDetails + " (Persistent)") : "Machine awaiting maintenance"
+                    );
                 }
             }
             break;
@@ -325,18 +302,7 @@ void StateMachine::update() {
             // State used to clear an abandoned cup before a new order
             displayManager.showMessage("Opening Door...");
             if (!_engine->openShutter()) {
-                if (_net) {
-                    _net->reportMachineError("DOOR_JAM_OPEN", "Door failed to open during cup collection");
-                    if (_currentToken.length() > 0) {
-                        displayManager.showMessage("Door Jam!\nRefunding token...");
-                        _net->rollbackOrder(_currentToken, "door_jam_open");
-                        _currentToken = "";
-                    }
-                }
-                _state = CupOSState::Error;
-                _stateStartMs = millis();
-                displayManager.showMessage("Out of Order (Door)");
-                _engine->playSound("/error_jam.wav");
+                triggerError("DOOR_JAM_OPEN", "Door failed to open during cup collection", "door_jam_open");
             } else {
                 _state = CupOSState::AwaitOrder;
                 _stateStartMs = millis();
@@ -354,18 +320,7 @@ void StateMachine::update() {
                     // Cup was successfully removed!
                     displayManager.showMessage("Thank you!\nStarting order...");
                     if (!_engine->closeShutter()) {
-                        if (_net) {
-                            _net->reportMachineError("DOOR_CLOSE_FAILED", "Door failed to close after old cup cleared");
-                            if (_currentToken.length() > 0) {
-                                displayManager.showMessage("Door Error!\nRefunding token...");
-                                _net->rollbackOrder(_currentToken, "door_close_failed");
-                                _currentToken = "";
-                            }
-                        }
-                        _state = CupOSState::Error;
-                        _stateStartMs = millis();
-                        displayManager.showMessage("Out of Order (Door)");
-                        _engine->playSound("/error_jam.wav");
+                        triggerError("DOOR_CLOSE_FAILED", "Door failed to close after old cup cleared", "door_close_failed");
                     } else {
                         // Old cup is gone and door is closed, proceed with new order!
                         _state = CupOSState::CupDispense;

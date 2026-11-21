@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { recordAlert, getAlerts, resolveAlerts, MachineAlertItem } from '@/lib/alerts'
 
-export interface MachineAlertItem {
-  id: string
-  machineId: string
-  errorCode: string
-  details?: string
-  timestamp: string
-  resolved: boolean
-}
-
-// In-memory buffer of recent machine alerts
-const alertHistory: MachineAlertItem[] = []
+export type { MachineAlertItem }
 
 /**
  * POST /api/machine-alert
- * Called by ESP32 firmware when machine transitions to CupOSState::Error
+ * Called by ESP32 firmware when machine transitions to CupOSState::Error or CupOSState::SelfTest pass
  * Body: { machineId: "INDORE-001", secret: "...", status: "maintenance", errorCode: "CUP_JAM", details: "..." }
  */
 export async function POST(req: NextRequest) {
@@ -50,35 +41,20 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       console.error('[machine-alert] Supabase update failed:', updateError)
-      return NextResponse.json({ success: false, error: updateError.message }, { status: 500 })
     }
 
-    // 2. Update alerts in memory
-    if (status === 'online') {
-      // Mark all past alerts for this machine as resolved
-      for (const a of alertHistory) {
-        if (a.machineId === machineId) {
-          a.resolved = true
-        }
-      }
-    } else {
-      // Append to in-memory alerts ring buffer
-      const alertEntry: MachineAlertItem = {
-        id: `${machineId}-${Date.now()}`,
-        machineId,
-        errorCode,
-        details,
-        timestamp,
-        resolved: false,
-      }
-      alertHistory.unshift(alertEntry)
-      if (alertHistory.length > 50) alertHistory.pop()
-    }
+    // 2. Persist alert to storage (Memory + Disk + Supabase machine_alerts)
+    const alertEntry = await recordAlert({
+      machineId,
+      errorCode,
+      details,
+      status,
+    })
 
     return NextResponse.json({
       success: true,
       message: `Machine ${machineId} set to ${status}. Alert logged.`,
-      errorCode,
+      errorCode: alertEntry?.errorCode || errorCode,
       timestamp,
     })
   } catch (err: any) {
@@ -92,39 +68,29 @@ export async function POST(req: NextRequest) {
  * Fetches recent alerts for the Admin dashboard
  */
 export async function GET() {
-  return NextResponse.json({
-    alerts: alertHistory,
-  })
+  try {
+    const alerts = await getAlerts()
+    return NextResponse.json({ alerts })
+  } catch (err: any) {
+    console.error('[machine-alert] GET exception:', err)
+    return NextResponse.json({ alerts: [] })
+  }
 }
 
 /**
  * PATCH /api/machine-alert
- * Admin can resolve an alert or return machine to online
+ * Admin resolves an alert or returns machine to online
  */
 export async function PATCH(req: NextRequest) {
   try {
     const { machineId, machineDbId, resolveAll = false } = await req.json()
 
-    if (machineDbId) {
-      await supabaseAdmin
-        .from('machines')
-        .update({ status: 'online' })
-        .eq('id', machineDbId)
-    } else if (machineId) {
-      await supabaseAdmin
-        .from('machines')
-        .update({ status: 'online' })
-        .eq('machine_code', machineId)
-    }
+    await resolveAlerts(machineId, machineDbId)
 
-    // Mark corresponding in-memory alerts resolved
-    for (const a of alertHistory) {
-      if (resolveAll || a.machineId === machineId) {
-        a.resolved = true
-      }
-    }
-
-    return NextResponse.json({ success: true, message: 'Alerts resolved and machine set to online' })
+    return NextResponse.json({
+      success: true,
+      message: 'Alerts resolved and machine set to online',
+    })
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 })
   }

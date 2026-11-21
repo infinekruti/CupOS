@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import QRCode from 'react-qr-code'
 import { supabase } from '@/lib/supabase'
+import { getErrorMetadata } from '@/lib/error-codes'
 
 // ── Types ─────────────────────────────────────────────────────
 type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number; totalWalletCredit:number; productStats:{name:string;full:number;half:number;total:number}[]; sizeStats:{full:number;half:number}; revenueTrend:{date:string;revenue:number}[] }
@@ -174,7 +175,7 @@ function DashboardSection() {
 }
 
 // ── Machines ──────────────────────────────────────────────────
-function MachinesSection({ machines, onRefresh }:{ machines:Machine[]; onRefresh:()=>void }) {
+function MachinesSection({ machines, alerts, onRefresh }:{ machines:Machine[]; alerts:AlertItem[]; onRefresh:()=>void }) {
   const [showFlushModal, setShowFlushModal] = useState(false)
   const toggle = async (m:Machine) => {
     // If in maintenance or offline, enabling sets it to online. If online, disables to offline.
@@ -241,33 +242,64 @@ function MachinesSection({ machines, onRefresh }:{ machines:Machine[]; onRefresh
       <div style={{overflowX:'auto',...card,padding:0}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
           <thead><tr style={{color:C.muted,background:'rgba(255,255,255,0.02)'}}>
-            {['Machine ID','Name','Location','Status','Last Heartbeat','Firmware','Action'].map(h=>(
+            {['Machine ID','Name','Location','Status & Active Error','Last Heartbeat','Firmware','Action'].map(h=>(
               <th key={h} style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>{h}</th>
             ))}
           </tr></thead>
-          <tbody>{machines.map(m=>(
-            <tr key={m.id} style={{borderTop:`1px solid rgba(255,255,255,0.04)`, background: m.status === 'maintenance' ? 'rgba(239,68,68,0.06)' : undefined}}>
-              <td style={{padding:'12px 16px',color:C.cream,fontFamily:'monospace',fontSize:12}}>{m.machine_code}</td>
-              <td style={{padding:'12px 16px',color:C.cream,fontWeight:600}}>{m.machine_name}</td>
-              <td style={{padding:'12px 16px',color:C.muted}}>{m.location}</td>
-              <td style={{padding:'12px 16px'}}>{getStatusBadge(m.status)}</td>
-              <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>{m.last_seen?ago(m.last_seen):'Never'}</td>
-              <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>{m.firmware_version??'—'}</td>
-              <td style={{padding:'12px 16px'}}>
-                <button
-                  onClick={()=>toggle(m)}
-                  style={{
-                    ...btnGhost,
-                    color: m.status === 'online' ? C.red : C.green,
-                    borderColor: m.status === 'maintenance' ? C.green : undefined,
-                    fontWeight: m.status === 'maintenance' ? 700 : undefined,
-                  }}
-                >
-                  {m.status === 'online' ? 'Disable' : (m.status === 'maintenance' ? 'Resolve (Set Online)' : 'Enable')}
-                </button>
-              </td>
-            </tr>
-          ))}</tbody>
+          <tbody>{machines.map(m => {
+            const activeAlert = alerts.find(a => a.machineId === m.machine_code && !a.resolved)
+            const meta = activeAlert ? getErrorMetadata(activeAlert.errorCode) : null
+            return (
+              <tr key={m.id} style={{borderTop:`1px solid rgba(255,255,255,0.04)`, background: m.status === 'maintenance' ? 'rgba(239,68,68,0.06)' : undefined}}>
+                <td style={{padding:'12px 16px',color:C.cream,fontFamily:'monospace',fontSize:12}}>{m.machine_code}</td>
+                <td style={{padding:'12px 16px',color:C.cream,fontWeight:600}}>{m.machine_name}</td>
+                <td style={{padding:'12px 16px',color:C.muted}}>{m.location}</td>
+                <td style={{padding:'12px 16px'}}>
+                  <div>
+                    {getStatusBadge(m.status)}
+                    {m.status === 'maintenance' && (
+                      <div style={{marginTop: 6, display:'flex', flexDirection:'column', gap:3}}>
+                        <span style={{
+                          display:'inline-flex',
+                          alignItems:'center',
+                          gap:4,
+                          background:'rgba(239,68,68,0.2)',
+                          border:'1px solid rgba(239,68,68,0.4)',
+                          borderRadius:6,
+                          padding:'2px 8px',
+                          color:C.red,
+                          fontSize:11,
+                          fontWeight:700,
+                          fontFamily:'monospace',
+                          width:'fit-content'
+                        }}>
+                          {meta?.icon || '🚨'} {activeAlert?.errorCode || 'HARDWARE_FAULT'}
+                        </span>
+                        <span style={{color:C.muted, fontSize:11, maxWidth: 220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}} title={activeAlert?.details || 'Machine halted in error state'}>
+                          {activeAlert?.details || 'Machine halted in error state'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>{m.last_seen?ago(m.last_seen):'Never'}</td>
+                <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>{m.firmware_version??'—'}</td>
+                <td style={{padding:'12px 16px'}}>
+                  <button
+                    onClick={()=>toggle(m)}
+                    style={{
+                      ...btnGhost,
+                      color: m.status === 'online' ? C.red : C.green,
+                      borderColor: m.status === 'maintenance' ? C.green : undefined,
+                      fontWeight: m.status === 'maintenance' ? 700 : undefined,
+                    }}
+                  >
+                    {m.status === 'online' ? 'Disable' : (m.status === 'maintenance' ? 'Resolve (Set Online)' : 'Enable')}
+                  </button>
+                </td>
+              </tr>
+            )
+          })}</tbody>
         </table>
       </div>
     </div>
@@ -277,6 +309,7 @@ function MachinesSection({ machines, onRefresh }:{ machines:Machine[]; onRefresh
 // ── Alerts & Fault Management ──────────────────────────────────
 function AlertsSection({ machines, alerts, onRefresh }:{ machines:Machine[]; alerts:AlertItem[]; onRefresh:()=>void }) {
   const [resolving, setResolving] = useState<string|null>(null)
+  const [expandedGuides, setExpandedGuides] = useState<Record<string, boolean>>({})
 
   const handleResolve = async (machine: Machine) => {
     setResolving(machine.id)
@@ -314,55 +347,138 @@ function AlertsSection({ machines, alerts, onRefresh }:{ machines:Machine[]; ale
           </div>
           {maintenanceMachines.map(m => {
             const machineAlert = alerts.find(a => a.machineId === m.machine_code && !a.resolved)
+            const meta = getErrorMetadata(machineAlert?.errorCode || 'MACHINE_IN_ERROR_STATE')
+            const isExpanded = expandedGuides[m.id] ?? true
+
             return (
               <div key={m.id} style={{
                 background:'rgba(239,68,68,0.08)',
-                border:'1px solid rgba(239,68,68,0.3)',
+                border:'1px solid rgba(239,68,68,0.35)',
                 borderRadius:16,
                 padding:'20px 24px',
                 display:'flex',
-                justifyContent:'space-between',
-                alignItems:'center',
-                flexWrap:'wrap',
+                flexDirection:'column',
                 gap:16,
               }}>
-                <div style={{display:'flex',gap:16,alignItems:'flex-start'}}>
-                  <div style={{fontSize:32,lineHeight:1}}>🚨</div>
-                  <div>
-                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-                      <span style={{color:'#FFFFFF',fontSize:18,fontWeight:700}}>{m.machine_name}</span>
-                      <span style={{fontFamily:'monospace',fontSize:12,color:C.muted,background:'rgba(255,255,255,0.06)',padding:'2px 8px',borderRadius:6}}>{m.machine_code}</span>
-                      <span style={badge(C.red)}>HARDWARE HALTED</span>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:16}}>
+                  <div style={{display:'flex',gap:16,alignItems:'flex-start'}}>
+                    <div style={{
+                      fontSize:32,
+                      lineHeight:1,
+                      background:'rgba(239,68,68,0.2)',
+                      padding:'12px',
+                      borderRadius:14,
+                      border:'1px solid rgba(239,68,68,0.3)'
+                    }}>
+                      {meta.icon}
                     </div>
-                    <p style={{color:C.cream,fontSize:14,marginBottom:6}}>
-                      <strong style={{color:C.goldL}}>Fault: </strong>
-                      {machineAlert ? `${machineAlert.errorCode} — ${machineAlert.details}` : 'Machine entered safety Error State (Door jam, sensor timeout, or cup drop failure)'}
-                    </p>
-                    <div style={{display:'flex',gap:16,color:C.muted,fontSize:12}}>
-                      <span>📍 {m.location}</span>
-                      <span>⏱ Reported: {m.last_seen ? ago(m.last_seen) : 'Recently'}</span>
-                      <span>📟 Firmware: v{m.firmware_version || '1.0.0'}</span>
+                    <div>
+                      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6,flexWrap:'wrap'}}>
+                        <span style={{color:'#FFFFFF',fontSize:18,fontWeight:700}}>{m.machine_name}</span>
+                        <span style={{fontFamily:'monospace',fontSize:12,color:C.muted,background:'rgba(255,255,255,0.06)',padding:'2px 8px',borderRadius:6}}>{m.machine_code}</span>
+                        <span style={badge(C.red)}>HARDWARE HALTED</span>
+                        <span style={{background:'rgba(255,255,255,0.08)',color:C.goldL,padding:'2px 8px',borderRadius:6,fontSize:11,fontWeight:700}}>
+                          {meta.category}
+                        </span>
+                      </div>
+
+                      {/* Diagnostic Fault Code Badge & Title */}
+                      <div style={{display:'flex',alignItems:'center',gap:10,margin:'8px 0',flexWrap:'wrap'}}>
+                        <span style={{
+                          background:'rgba(239,68,68,0.25)',
+                          color:C.red,
+                          border:'1px solid rgba(239,68,68,0.5)',
+                          borderRadius:8,
+                          padding:'4px 10px',
+                          fontSize:13,
+                          fontWeight:800,
+                          fontFamily:'monospace',
+                          letterSpacing:0.5,
+                        }}>
+                          🚨 {meta.code}
+                        </span>
+                        <span style={{color:C.cream,fontSize:14,fontWeight:600}}>
+                          {meta.title}
+                        </span>
+                      </div>
+
+                      <p style={{color:C.muted,fontSize:13,marginTop:4,marginBottom:8}}>
+                        <strong style={{color:C.cream}}>Reported Details: </strong>
+                        {machineAlert?.details || meta.description}
+                      </p>
+
+                      <div style={{display:'flex',gap:16,color:C.muted,fontSize:12,flexWrap:'wrap'}}>
+                        <span>📍 Location: <strong style={{color:C.cream}}>{m.location}</strong></span>
+                        <span>⏱ Fault Occurred: <strong style={{color:C.cream}}>{machineAlert ? ago(machineAlert.timestamp) : (m.last_seen ? ago(m.last_seen) : 'Recently')}</strong></span>
+                        <span>📟 Firmware: <strong style={{color:C.cream}}>v{m.firmware_version || '1.0.0'}</strong></span>
+                      </div>
                     </div>
                   </div>
+
+                  <div style={{display:'flex',gap:10}}>
+                    <button
+                      disabled={resolving === m.id}
+                      onClick={() => handleResolve(m)}
+                      style={{
+                        background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: 10,
+                        padding: '10px 18px',
+                        fontWeight: 700,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(34,197,94,0.3)',
+                      }}
+                    >
+                      {resolving === m.id ? 'Resolving...' : '✓ Mark Resolved & Set Online'}
+                    </button>
+                  </div>
                 </div>
-                <div style={{display:'flex',gap:10}}>
-                  <button
-                    disabled={resolving === m.id}
-                    onClick={() => handleResolve(m)}
-                    style={{
-                      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                      color: '#FFFFFF',
-                      border: 'none',
-                      borderRadius: 10,
-                      padding: '10px 18px',
-                      fontWeight: 700,
-                      fontSize: 13,
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(34,197,94,0.3)',
-                    }}
+
+                {/* Technician Fix Guide Checklist */}
+                <div style={{
+                  background:'rgba(0,0,0,0.25)',
+                  border:'1px solid rgba(255,255,255,0.06)',
+                  borderRadius:12,
+                  padding:'14px 18px',
+                }}>
+                  <div
+                    onClick={() => setExpandedGuides(prev => ({ ...prev, [m.id]: !isExpanded }))}
+                    style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none'}}
                   >
-                    {resolving === m.id ? 'Resolving...' : '✓ Mark Resolved & Set Online'}
-                  </button>
+                    <span style={{color:C.goldL,fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:6}}>
+                      🛠️ Field Technician Fix Guide for {meta.code}
+                    </span>
+                    <span style={{color:C.muted,fontSize:12}}>
+                      {isExpanded ? '▲ Hide Guide' : '▼ Show Checklist'}
+                    </span>
+                  </div>
+                  {isExpanded && (
+                    <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:8,borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:12}}>
+                      {meta.troubleshooting.map((step, idx) => (
+                        <div key={idx} style={{display:'flex',gap:10,alignItems:'flex-start',fontSize:13,color:C.cream}}>
+                          <span style={{
+                            background:'rgba(217,119,6,0.2)',
+                            color:C.goldL,
+                            borderRadius:'50%',
+                            width:20,
+                            height:20,
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:11,
+                            fontWeight:700,
+                            flexShrink:0,
+                            marginTop:1
+                          }}>
+                            {idx + 1}
+                          </span>
+                          <span style={{lineHeight:1.4}}>{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -924,7 +1040,7 @@ export default function AdminPage() {
   const renderContent = () => {
     if (tab==='dashboard')    return <DashboardSection/>
     if (tab==='products')     return <ProductsSection/>
-    if (tab==='machines')     return <MachinesSection machines={machines} onRefresh={loadMachinesAndAlerts}/>
+    if (tab==='machines')     return <MachinesSection machines={machines} alerts={alerts} onRefresh={loadMachinesAndAlerts}/>
     if (tab==='transactions') return <TransactionsSection/>
     if (tab==='tokens')       return <TokensSection/>
     if (tab==='customers')    return <CustomersSection/>
@@ -1095,8 +1211,31 @@ export default function AdminPage() {
                   <div style={{color:'#FFFFFF',fontWeight:700,fontSize:14}}>
                     CRITICAL FAULT: {maintenanceMachines.length} Machine{maintenanceMachines.length > 1 ? 's' : ''} in Error State!
                   </div>
-                  <div style={{color:'rgba(255,255,255,0.85)',fontSize:12,marginTop:2}}>
-                    {maintenanceMachines.map(m => `${m.machine_name} (${m.machine_code})`).join(', ')} entered safety maintenance mode.
+                  <div style={{color:'rgba(255,255,255,0.9)',fontSize:12,marginTop:4,display:'flex',flexDirection:'column',gap:4}}>
+                    {maintenanceMachines.map(m => {
+                      const alert = alerts.find(a => a.machineId === m.machine_code && !a.resolved)
+                      const meta = getErrorMetadata(alert?.errorCode || 'MACHINE_IN_ERROR_STATE')
+                      return (
+                        <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                          <span style={{fontWeight:600,color:C.cream}}>{m.machine_name} ({m.machine_code}):</span>
+                          <span style={{
+                            background:'rgba(239,68,68,0.25)',
+                            color:'#FFFFFF',
+                            border:'1px solid rgba(239,68,68,0.5)',
+                            padding:'1px 8px',
+                            borderRadius:6,
+                            fontSize:11,
+                            fontWeight:700,
+                            fontFamily:'monospace'
+                          }}>
+                            {meta.icon} {meta.code}
+                          </span>
+                          <span style={{color:'rgba(255,255,255,0.7)',fontSize:12}}>
+                            — {alert?.details || meta.description}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>

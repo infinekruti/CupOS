@@ -1,4 +1,5 @@
 import { supabaseAdmin } from './supabase'
+import { recordAlert } from './alerts'
 import crypto from 'crypto'
 
 /** Generate a unique CPOS-XXXXXXXX token */
@@ -173,6 +174,30 @@ export async function rollbackToken(params: {
 
   if (isHardwareFailure) {
     machineUpdate.status = 'maintenance'
+
+    let mappedCode = 'HARDWARE_ERROR'
+    let mappedDetails = `Dispense failure rollback (${reason})`
+    if (reason === 'cup_dispense_failed') {
+      mappedCode = 'CUP_JAM'
+      mappedDetails = 'Cup failed to drop after 5 attempts during order'
+    } else if (reason === 'door_close_failed') {
+      mappedCode = 'DOOR_CLOSE_FAILED'
+      mappedDetails = 'Door failed to close during dispense sequence'
+    } else if (reason === 'door_jam_open') {
+      mappedCode = 'DOOR_JAM_OPEN'
+      mappedDetails = 'Door failed to open after beverage preparation'
+    }
+
+    try {
+      await recordAlert({
+        machineId: machineCode,
+        errorCode: mappedCode,
+        details: mappedDetails,
+        status: 'maintenance',
+      })
+    } catch (alertErr) {
+      console.error('[tokens.ts] Error recording alert on rollback:', alertErr)
+    }
   } else if (currentM?.status !== 'maintenance') {
     machineUpdate.status = 'online'
   }

@@ -26,6 +26,7 @@ public:
     void begin(QRScanner* qr, Network* net);
     void update();
     void triggerFlush();
+    void triggerError(const String& errorCode, const String& details, const String& rollbackReason = "");
     CupOSState current() const { return _state; }
 private:
     CupOSState _state = CupOSState::Boot;
@@ -43,5 +44,8 @@ private:
     String _currentToken = "";
     uint32_t _lastFlushTime = 0;
     uint16_t _drinksSinceLastFlush = 0;
+    String _lastErrorCode = "";
+    String _lastErrorDetails = "";
+    uint32_t _lastErrorReportMs = 0;
     bool processQR();
 };
