@@ -1,18 +1,58 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import QRCode from 'react-qr-code'
 import { supabase } from '@/lib/supabase'
 import { getErrorMetadata } from '@/lib/error-codes'
 
 // ── Types ─────────────────────────────────────────────────────
-type Stats = { totalMachines:number; onlineMachines:number; offlineMachines:number; revenueToday:number; ordersToday:number; revenueMonth:number; coffeeToday:number; activeCustomers:number; totalWalletCredit:number; productStats:{name:string;full:number;half:number;total:number}[]; sizeStats:{full:number;half:number}; revenueTrend:{date:string;revenue:number}[] }
+type Stats = {
+  totalMachines: number
+  onlineMachines: number
+  offlineMachines: number
+  revenueToday: number
+  ordersToday: number
+  walletRedemptionToday: number
+  walletOrdersToday: number
+  totalSalesToday: number
+  revenueMonth: number
+  ordersMonth: number
+  walletRedemptionMonth: number
+  walletOrdersMonth: number
+  totalSalesMonth: number
+  coffeeToday: number
+  activeCustomers: number
+  totalWalletCredit: number
+  productStats: { name: string; full: number; half: number; total: number }[]
+  sizeStats: { full: number; half: number }
+  revenueTrend: { date: string; revenue: number; directRevenue?: number; walletRedemption?: number; orders?: number; walletOrders?: number }[]
+}
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type AlertItem = { id:string; machineId:string; errorCode:string; details?:string; timestamp:string; resolved:boolean }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
 type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
 type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; allow_half:boolean; half_price:number }
-type Customer = { id:string; name:string; email:string|null; phone:string|null; created_at:string; wallet_balance:number; total_spent:number }
+type Customer = {
+  id: string
+  name: string
+  email: string | null
+  phone: string | null
+  avatar_url?: string | null
+  created_at: string
+  wallet_balance: number
+  total_spent: number
+  direct_spent?: number
+  wallet_spent?: number
+  order_count?: number
+  last_order_at?: string | null
+  recent_orders?: Array<{
+    id: string
+    order_id: string
+    payment_id: string
+    payment_amount: number
+    created_at: string
+  }>
+}
 
 // ── Styles ────────────────────────────────────────────────────
 const C = { bg:'#070504', side:'#0A0806', card:'rgba(255,255,255,0.04)', border:'rgba(200,146,42,0.14)', gold:'#C8922A', goldL:'#E5A93C', cream:'#F5F0E8', muted:'#C4B99A', green:'#22c55e', red:'#ef4444', yellow:'#f59e0b', font:"'Outfit',sans-serif" }
@@ -81,13 +121,16 @@ function DashboardSection() {
   if(!stats) return <p style={{color:C.muted}}>Loading...</p>
   return (
     <div style={{display:'flex',flexDirection:'column',gap:24}}>
-      <div className="kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
-        <KPI label="Revenue Today"     value={rupee(stats.revenueToday)}  sub={`${stats.ordersToday} orders`} />
-        <KPI label="Revenue This Month" value={rupee(stats.revenueMonth)} color={C.goldL} />
-        <KPI label="Total Given Credit" value={rupee(stats.totalWalletCredit)} color="#34d399" sub="Lifetime" />
-        <KPI label="Coffee Dispensed"  value={`${stats.coffeeToday}`}     sub="today" color='#a78bfa' />
-        <KPI label="Machines Online"   value={`${stats.onlineMachines}/${stats.totalMachines}`} color={stats.onlineMachines>0?C.green:C.red} sub={`${stats.offlineMachines} offline`} />
-        <KPI label="Active Customers"  value={`${stats.activeCustomers}`} sub="this month" color='#60a5fa' />
+      <div className="kpi-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:12}}>
+        <KPI label="Revenue Today (Direct)"     value={rupee(stats.revenueToday)}  sub={`${stats.ordersToday} gateway orders`} color={C.green} />
+        <KPI label="Wallet Redemption (Today)"  value={rupee(stats.walletRedemptionToday || 0)} sub={`${stats.walletOrdersToday || 0} wallet orders`} color="#c084fc" />
+        <KPI label="Total Sales Value (Today)"  value={rupee(stats.totalSalesToday || (stats.revenueToday + (stats.walletRedemptionToday || 0)))} sub={`${stats.ordersToday + (stats.walletOrdersToday || 0)} total orders`} color={C.goldL} />
+        <KPI label="Revenue Month (Direct)"     value={rupee(stats.revenueMonth)} sub={`${stats.ordersMonth || 0} gateway orders`} color={C.gold} />
+        <KPI label="Wallet Redemptions (Month)" value={rupee(stats.walletRedemptionMonth || 0)} sub={`${stats.walletOrdersMonth || 0} wallet orders`} color="#a855f7" />
+        <KPI label="Coffee Dispensed"           value={`${stats.coffeeToday}`}     sub="today" color='#38bdf8' />
+        <KPI label="Machines Online"            value={`${stats.onlineMachines}/${stats.totalMachines}`} color={stats.onlineMachines>0?C.green:C.red} sub={`${stats.offlineMachines} offline`} />
+        <KPI label="Active Customers"           value={`${stats.activeCustomers}`} sub="this month" color='#60a5fa' />
+        <KPI label="Total Given Credit"         value={rupee(stats.totalWalletCredit)} color="#34d399" sub="Lifetime promo credit" />
       </div>
 
       <div className="chart-grid" style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:24}}>
@@ -131,15 +174,26 @@ function DashboardSection() {
           </div>
 
           <div style={{...card,flex:1}}>
-            <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5,marginBottom:14}}>7-Day Revenue Trend</p>
-            <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',height:80,gap:4}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
+              <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1.5}}>7-Day Revenue Trend</p>
+              <div style={{display:'flex',gap:12,fontSize:10}}>
+                <span style={{display:'flex',alignItems:'center',gap:4,color:C.gold}}><span style={{width:8,height:8,borderRadius:2,background:C.gold}} /> Direct Gateway</span>
+                <span style={{display:'flex',alignItems:'center',gap:4,color:'#c084fc'}}><span style={{width:8,height:8,borderRadius:2,background:'#c084fc'}} /> Wallet Redemption</span>
+              </div>
+            </div>
+            <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',height:86,gap:6}}>
               {stats.revenueTrend.map((t,i) => {
-                const max = Math.max(...stats.revenueTrend.map(x=>x.revenue), 1)
-                const h = Math.max((t.revenue / max) * 100, 4)
+                const direct = t.directRevenue ?? t.revenue ?? 0
+                const wallet = t.walletRedemption ?? 0
+                const max = Math.max(...stats.revenueTrend.map(x => Math.max(x.directRevenue ?? x.revenue ?? 0, x.walletRedemption ?? 0)), 1)
+                const directH = Math.max((direct / max) * 100, direct > 0 ? 6 : 0)
+                const walletH = Math.max((wallet / max) * 100, wallet > 0 ? 6 : 0)
+
                 return (
-                  <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}}>
-                    <div style={{width:'100%',height:80,display:'flex',alignItems:'flex-end'}}>
-                      <div style={{width:'100%',height:`${h}%`,background:t.revenue>0?C.gold:'rgba(255,255,255,0.05)',borderRadius:4}} title={rupee(t.revenue)} />
+                  <div key={i} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flex:1}} title={`${t.date}\nDirect: ${rupee(direct)}\nWallet: ${rupee(wallet)}\nTotal: ${rupee(direct + wallet)}`}>
+                    <div style={{width:'100%',height:86,display:'flex',alignItems:'flex-end',justifyContent:'center',gap:2}}>
+                      <div style={{width:'45%',height:`${directH}%`,background:direct>0?C.gold:'rgba(255,255,255,0.05)',borderRadius:'3px 3px 0 0'}} />
+                      <div style={{width:'45%',height:`${walletH}%`,background:wallet>0?'#c084fc':'rgba(255,255,255,0.03)',borderRadius:'3px 3px 0 0'}} />
                     </div>
                     <span style={{fontSize:9,color:C.muted}}>{t.date.slice(5,10)}</span>
                   </div>
@@ -785,11 +839,24 @@ function CustomersSection() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Filters & Search State
+  const [search, setSearch] = useState('')
+  const [walletFilter, setWalletFilter] = useState<'all' | 'has_balance' | 'zero_balance' | 'high_balance'>('all')
+  const [spendFilter, setSpendFilter] = useState<'all' | 'has_spent' | 'high_spent' | 'zero_spent'>('all')
+  const [orderFilter, setOrderFilter] = useState<'all' | 'repeat' | 'has_orders' | 'zero_orders'>('all')
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all')
+  const [sortBy, setSortBy] = useState<'joined_desc' | 'joined_asc' | 'wallet_desc' | 'spent_desc' | 'orders_desc' | 'name_asc'>('joined_desc')
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+
   const load = useCallback(() => {
-    fetch(`/api/admin/customers?_t=${Date.now()}`).then(r => r.json()).then(d => {
-      setCustomers(d.customers ?? [])
-      setLoading(false)
-    })
+    setLoading(true)
+    fetch(`/api/admin/customers?_t=${Date.now()}`)
+      .then(r => r.json())
+      .then(d => {
+        setCustomers(d.customers ?? [])
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -815,7 +882,10 @@ function CustomersSection() {
         const data = await res.json()
         if (data.success) {
           alert(`Successfully credited ₹${amountInRupees}!`)
-          load() // Reload customer list to show new balance
+          load()
+          if (selectedCustomer && selectedCustomer.id === userId) {
+            setSelectedCustomer(prev => prev ? { ...prev, wallet_balance: prev.wallet_balance + amountInPaise } : null)
+          }
         } else {
           alert('Failed to credit wallet: ' + data.error)
         }
@@ -825,45 +895,522 @@ function CustomersSection() {
     }
   }
 
-  if (loading) return <p style={{color:C.muted}}>Loading customers...</p>
+  // Filtered and sorted customer list
+  const filteredCustomers = useMemo(() => {
+    let result = [...customers]
+
+    // 1. Text search
+    if (search.trim()) {
+      const q = search.toLowerCase().trim()
+      result = result.filter(c =>
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.phone && c.phone.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        c.id.toLowerCase().includes(q)
+      )
+    }
+
+    // 2. Wallet balance filter
+    if (walletFilter === 'has_balance') {
+      result = result.filter(c => c.wallet_balance > 0)
+    } else if (walletFilter === 'zero_balance') {
+      result = result.filter(c => c.wallet_balance === 0)
+    } else if (walletFilter === 'high_balance') {
+      result = result.filter(c => c.wallet_balance >= 10000) // ₹100+
+    }
+
+    // 3. Spend filter
+    if (spendFilter === 'has_spent') {
+      result = result.filter(c => c.total_spent > 0)
+    } else if (spendFilter === 'high_spent') {
+      result = result.filter(c => c.total_spent >= 50000) // ₹500+
+    } else if (spendFilter === 'zero_spent') {
+      result = result.filter(c => c.total_spent === 0)
+    }
+
+    // 4. Orders filter
+    if (orderFilter === 'repeat') {
+      result = result.filter(c => (c.order_count || 0) >= 2)
+    } else if (orderFilter === 'has_orders') {
+      result = result.filter(c => (c.order_count || 0) >= 1)
+    } else if (orderFilter === 'zero_orders') {
+      result = result.filter(c => (c.order_count || 0) === 0)
+    }
+
+    // 5. Date filter
+    if (dateFilter !== 'all') {
+      const now = Date.now()
+      result = result.filter(c => {
+        const joined = new Date(c.created_at).getTime()
+        const diffMs = now - joined
+        if (dateFilter === 'today') return diffMs <= 24 * 60 * 60 * 1000
+        if (dateFilter === 'week') return diffMs <= 7 * 24 * 60 * 60 * 1000
+        if (dateFilter === 'month') return diffMs <= 30 * 24 * 60 * 60 * 1000
+        return true
+      })
+    }
+
+    // 6. Sort
+    result.sort((a, b) => {
+      if (sortBy === 'joined_asc') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      if (sortBy === 'wallet_desc') return b.wallet_balance - a.wallet_balance
+      if (sortBy === 'spent_desc') return b.total_spent - a.total_spent
+      if (sortBy === 'orders_desc') return (b.order_count || 0) - (a.order_count || 0)
+      if (sortBy === 'name_asc') return a.name.localeCompare(b.name)
+      // default: joined_desc
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    return result
+  }, [customers, search, walletFilter, spendFilter, orderFilter, dateFilter, sortBy])
+
+  // Summary statistics for customer fleet
+  const statsSummary = useMemo(() => {
+    const totalCustomers = customers.length
+    const withBalance = customers.filter(c => c.wallet_balance > 0).length
+    const totalWalletFloat = customers.reduce((sum, c) => sum + c.wallet_balance, 0)
+    const totalLifetimeSpend = customers.reduce((sum, c) => sum + c.total_spent, 0)
+    return { totalCustomers, withBalance, totalWalletFloat, totalLifetimeSpend }
+  }, [customers])
+
+  const hasActiveFilters = Boolean(
+    search || walletFilter !== 'all' || spendFilter !== 'all' || orderFilter !== 'all' || dateFilter !== 'all' || sortBy !== 'joined_desc'
+  )
+
+  const clearFilters = () => {
+    setSearch('')
+    setWalletFilter('all')
+    setSpendFilter('all')
+    setOrderFilter('all')
+    setDateFilter('all')
+    setSortBy('joined_desc')
+  }
+
+  const exportCSV = () => {
+    const headers = ['ID', 'Name', 'Phone', 'Email', 'Joined Date', 'Wallet Balance (Rs)', 'Direct Spent (Rs)', 'Wallet Spent (Rs)', 'Total Spent (Rs)', 'Orders Count', 'Last Order']
+    const rows = filteredCustomers.map(c => [
+      c.id,
+      `"${c.name.replace(/"/g, '""')}"`,
+      c.phone || '',
+      c.email || '',
+      c.created_at,
+      (c.wallet_balance / 100).toFixed(2),
+      ((c.direct_spent || 0) / 100).toFixed(2),
+      ((c.wallet_spent || 0) / 100).toFixed(2),
+      (c.total_spent / 100).toFixed(2),
+      c.order_count || 0,
+      c.last_order_at || 'Never'
+    ])
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `cupos_customers_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const selStyle = {
+    background: 'rgba(255,255,255,0.06)',
+    border: `1px solid ${C.border}`,
+    borderRadius: 8,
+    padding: '8px 12px',
+    color: C.cream,
+    fontSize: 12,
+    fontFamily: C.font,
+    outline: 'none',
+    cursor: 'pointer',
+  }
+
+  if (loading && customers.length === 0) return <p style={{color:C.muted}}>Loading customers...</p>
 
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Customer Management</h2>
+    <div style={{display:'flex',flexDirection:'column',gap:20}}>
+      {/* Header & Export Action */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Customer Management</h2>
+          <p style={{color:C.muted,fontSize:13,marginTop:4}}>View profiles, search by parameters, credit wallets, and track order histories</p>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button onClick={exportCSV} style={{...btnGhost, display:'flex', alignItems:'center', gap:6}}>
+            <span>📥</span> Export CSV ({filteredCustomers.length})
+          </button>
+          <button onClick={load} style={btnGhost}>↻ Refresh</button>
+        </div>
+      </div>
 
+      {/* Overview Stat Chips */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12}}>
+        <div style={{...card,padding:'14px 18px'}}>
+          <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Total Registered</p>
+          <p style={{color:C.cream,fontSize:22,fontWeight:700,marginTop:4}}>{statsSummary.totalCustomers}</p>
+          <p style={{color:C.muted,fontSize:11,marginTop:2}}>{statsSummary.withBalance} with wallet credit</p>
+        </div>
+        <div style={{...card,padding:'14px 18px'}}>
+          <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Total Wallet Float</p>
+          <p style={{color:C.goldL,fontSize:22,fontWeight:700,marginTop:4}}>{rupee(statsSummary.totalWalletFloat)}</p>
+          <p style={{color:C.muted,fontSize:11,marginTop:2}}>Active balance held by customers</p>
+        </div>
+        <div style={{...card,padding:'14px 18px'}}>
+          <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Customer Lifetime Spend</p>
+          <p style={{color:C.green,fontSize:22,fontWeight:700,marginTop:4}}>{rupee(statsSummary.totalLifetimeSpend)}</p>
+          <p style={{color:C.muted,fontSize:11,marginTop:2}}>Total drink purchases made</p>
+        </div>
+        <div style={{...card,padding:'14px 18px'}}>
+          <p style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Matching Filter</p>
+          <p style={{color:C.gold,fontSize:22,fontWeight:700,marginTop:4}}>{filteredCustomers.length}</p>
+          <p style={{color:C.muted,fontSize:11,marginTop:2}}>of {customers.length} total customers</p>
+        </div>
+      </div>
+
+      {/* Search & Multi-Parameter Filter Controls */}
+      <div style={{...card,display:'flex',flexDirection:'column',gap:14,padding:'18px 20px'}}>
+        {/* Top Search Input */}
+        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          <div style={{position:'relative',flex:1,minWidth:240}}>
+            <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:C.muted,fontSize:14}}>🔍</span>
+            <input
+              type="text"
+              placeholder="Search by name, phone, email, or user ID..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width:'100%',
+                background:'rgba(255,255,255,0.06)',
+                border:`1px solid ${C.border}`,
+                borderRadius:8,
+                padding:'10px 14px 10px 36px',
+                color:C.cream,
+                fontSize:13,
+                fontFamily:C.font,
+                outline:'none'
+              }}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:14}}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {hasActiveFilters && (
+            <button onClick={clearFilters} style={{...btnGhost,color:C.red,borderColor:'rgba(239,68,68,0.3)',padding:'9px 14px'}}>
+              Reset All Filters
+            </button>
+          )}
+        </div>
+
+        {/* Parameter Filters Row */}
+        <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+          {/* Wallet Balance Filter */}
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{color:C.muted,fontSize:10,textTransform:'uppercase',letterSpacing:1}}>Wallet Balance</label>
+            <select value={walletFilter} onChange={e => setWalletFilter(e.target.value as any)} style={selStyle}>
+              <option value="all" style={{background:'#0D0A08',color:C.cream}}>All Wallets</option>
+              <option value="has_balance" style={{background:'#0D0A08',color:C.cream}}>Has Balance (&gt; ₹0)</option>
+              <option value="high_balance" style={{background:'#0D0A08',color:C.cream}}>High Balance (≥ ₹100)</option>
+              <option value="zero_balance" style={{background:'#0D0A08',color:C.cream}}>Zero Balance (₹0)</option>
+            </select>
+          </div>
+
+          {/* Spending Filter */}
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{color:C.muted,fontSize:10,textTransform:'uppercase',letterSpacing:1}}>Total Spending</label>
+            <select value={spendFilter} onChange={e => setSpendFilter(e.target.value as any)} style={selStyle}>
+              <option value="all" style={{background:'#0D0A08',color:C.cream}}>All Spenders</option>
+              <option value="has_spent" style={{background:'#0D0A08',color:C.cream}}>Paying Customers (&gt; ₹0)</option>
+              <option value="high_spent" style={{background:'#0D0A08',color:C.cream}}>VIP Spenders (≥ ₹500)</option>
+              <option value="zero_spent" style={{background:'#0D0A08',color:C.cream}}>Zero Spend (₹0)</option>
+            </select>
+          </div>
+
+          {/* Orders Filter */}
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{color:C.muted,fontSize:10,textTransform:'uppercase',letterSpacing:1}}>Orders Count</label>
+            <select value={orderFilter} onChange={e => setOrderFilter(e.target.value as any)} style={selStyle}>
+              <option value="all" style={{background:'#0D0A08',color:C.cream}}>All Orders</option>
+              <option value="repeat" style={{background:'#0D0A08',color:C.cream}}>Repeat Buyers (2+ Orders)</option>
+              <option value="has_orders" style={{background:'#0D0A08',color:C.cream}}>At Least 1 Order</option>
+              <option value="zero_orders" style={{background:'#0D0A08',color:C.cream}}>0 Orders (Inactive)</option>
+            </select>
+          </div>
+
+          {/* Registration Date Filter */}
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{color:C.muted,fontSize:10,textTransform:'uppercase',letterSpacing:1}}>Joined Period</label>
+            <select value={dateFilter} onChange={e => setDateFilter(e.target.value as any)} style={selStyle}>
+              <option value="all" style={{background:'#0D0A08',color:C.cream}}>All Time</option>
+              <option value="today" style={{background:'#0D0A08',color:C.cream}}>Today</option>
+              <option value="week" style={{background:'#0D0A08',color:C.cream}}>Last 7 Days</option>
+              <option value="month" style={{background:'#0D0A08',color:C.cream}}>Last 30 Days</option>
+            </select>
+          </div>
+
+          {/* Sort By */}
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{color:C.muted,fontSize:10,textTransform:'uppercase',letterSpacing:1}}>Sort Order</label>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} style={selStyle}>
+              <option value="joined_desc" style={{background:'#0D0A08',color:C.cream}}>Newest Registered</option>
+              <option value="joined_asc" style={{background:'#0D0A08',color:C.cream}}>Oldest Registered</option>
+              <option value="wallet_desc" style={{background:'#0D0A08',color:C.cream}}>Highest Wallet Balance</option>
+              <option value="spent_desc" style={{background:'#0D0A08',color:C.cream}}>Highest Total Spent</option>
+              <option value="orders_desc" style={{background:'#0D0A08',color:C.cream}}>Most Orders Placed</option>
+              <option value="name_asc" style={{background:'#0D0A08',color:C.cream}}>Name (A to Z)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Customer Table */}
       <div style={{...card,padding:0,overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-          <thead><tr style={{color:C.muted}}>
-            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>User</th>
+          <thead><tr style={{color:C.muted,background:'rgba(255,255,255,0.02)'}}>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Customer Profile</th>
             <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Joined</th>
             <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Wallet Balance</th>
             <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Total Spent</th>
-            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Action</th>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Orders Placed</th>
+            <th style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>Actions</th>
           </tr></thead>
           <tbody>
-            {customers.map(c => (
-              <tr key={c.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>
-                <td style={{padding:'11px 16px'}}>
-                  <div style={{color:C.cream, fontWeight:600}}>{c.name}</div>
-                  <div style={{color:C.muted, fontSize:12, marginTop:2}}>{c.phone || c.email || 'No contact info'}</div>
-                </td>
-                <td style={{padding:'11px 16px',color:C.muted}}>{fmt(c.created_at)}</td>
-                <td style={{padding:'11px 16px'}}>
-                  <span style={{color: C.goldL, fontWeight: 700}}>{rupee(c.wallet_balance)}</span>
-                </td>
-                <td style={{padding:'11px 16px',color:C.muted}}>{rupee(c.total_spent)}</td>
-                <td style={{padding:'11px 16px', display:'flex', gap:8}}>
-                  <button onClick={() => handleCreditWallet(c.id, c.name)} style={{...btnGold, fontSize:11}}>Credit Wallet</button>
-                  <button style={{...btnGhost, fontSize:11}}>Orders</button>
+            {filteredCustomers.map(c => {
+              const initials = (c.name || 'CU').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+              return (
+                <tr key={c.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>
+                  {/* Profile */}
+                  <td style={{padding:'12px 16px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <div style={{
+                        width:36,
+                        height:36,
+                        borderRadius:'50%',
+                        background:'linear-gradient(135deg, rgba(200,146,42,0.3), rgba(229,169,60,0.1))',
+                        border:`1px solid ${C.border}`,
+                        display:'flex',
+                        alignItems:'center',
+                        justifyContent:'center',
+                        color:C.goldL,
+                        fontWeight:700,
+                        fontSize:12,
+                        flexShrink:0
+                      }}>
+                        {initials}
+                      </div>
+                      <div>
+                        <div style={{color:C.cream, fontWeight:600, fontSize:14}}>{c.name}</div>
+                        <div style={{color:C.muted, fontSize:12, marginTop:2, display:'flex', gap:8, flexWrap:'wrap'}}>
+                          {c.phone && <span>📞 {c.phone}</span>}
+                          {c.email && <span>✉️ {c.email}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Joined Date */}
+                  <td style={{padding:'12px 16px',color:C.muted,fontSize:12}}>
+                    <div>{fmt(c.created_at)}</div>
+                    <div style={{color:'rgba(255,255,255,0.3)',fontSize:11,marginTop:2}}>{ago(c.created_at)}</div>
+                  </td>
+
+                  {/* Wallet Balance */}
+                  <td style={{padding:'12px 16px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{
+                        color: c.wallet_balance > 0 ? C.goldL : C.muted,
+                        fontWeight: c.wallet_balance > 0 ? 800 : 500,
+                        fontSize: 14,
+                        fontFamily: 'monospace'
+                      }}>
+                        {rupee(c.wallet_balance)}
+                      </span>
+                      {c.wallet_balance > 0 && (
+                        <span style={{width:6,height:6,borderRadius:'50%',background:C.green,boxShadow:`0 0 6px ${C.green}`}} />
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Total Spent */}
+                  <td style={{padding:'12px 16px'}}>
+                    <div style={{color: c.total_spent > 0 ? C.cream : C.muted, fontWeight:600, fontSize:14}}>
+                      {rupee(c.total_spent)}
+                    </div>
+                    {c.total_spent > 0 && (
+                      <div style={{color:C.muted, fontSize:11, marginTop:2}}>
+                        Direct: {rupee(c.direct_spent || 0)} • Wallet: {rupee(c.wallet_spent || 0)}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Orders */}
+                  <td style={{padding:'12px 16px'}}>
+                    <div>
+                      <span style={{
+                        background: (c.order_count || 0) > 0 ? 'rgba(56,189,248,0.12)' : 'rgba(255,255,255,0.04)',
+                        color: (c.order_count || 0) > 0 ? '#38bdf8' : C.muted,
+                        padding: '3px 10px',
+                        borderRadius: 12,
+                        fontSize: 11,
+                        fontWeight: 700
+                      }}>
+                        {(c.order_count || 0)} order{(c.order_count || 0) === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    {c.last_order_at && (
+                      <div style={{color:C.muted, fontSize:11, marginTop:4}}>
+                        Last: {ago(c.last_order_at)}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Actions */}
+                  <td style={{padding:'12px 16px'}}>
+                    <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                      <button
+                        onClick={() => handleCreditWallet(c.id, c.name)}
+                        style={{...btnGold, fontSize:11, padding:'6px 12px'}}
+                      >
+                        + Credit Wallet
+                      </button>
+                      <button
+                        onClick={() => setSelectedCustomer(c)}
+                        style={{...btnGhost, fontSize:11, padding:'6px 12px'}}
+                      >
+                        View Orders
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+            {filteredCustomers.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{padding:'40px 20px',textAlign:'center',color:C.muted}}>
+                  <p style={{fontSize:24,marginBottom:6}}>🔍</p>
+                  <p style={{color:C.cream,fontWeight:600}}>No customers match the current search or filters.</p>
+                  <button onClick={clearFilters} style={{...btnGold,marginTop:12,fontSize:12}}>
+                    Clear Filters
+                  </button>
                 </td>
               </tr>
-            ))}
-            {customers.length === 0 && (
-              <tr><td colSpan={5} style={{padding:'20px',textAlign:'center',color:C.muted}}>No customers found.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Customer Orders History Modal */}
+      {selectedCustomer && (
+        <div style={{
+          position:'fixed',top:0,left:0,right:0,bottom:0,
+          background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',
+          zIndex:1000,backdropFilter:'blur(5px)',padding:20
+        }}>
+          <div style={{
+            background:'#0D0A08',
+            border:`1px solid ${C.gold}`,
+            borderRadius:20,
+            padding:'28px 24px',
+            maxWidth:560,
+            width:'100%',
+            display:'flex',
+            flexDirection:'column',
+            gap:18,
+            boxShadow:'0 20px 40px rgba(0,0,0,0.8)',
+            maxHeight:'90vh',
+            overflowY:'auto'
+          }}>
+            {/* Modal Header */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',borderBottom:'1px solid rgba(255,255,255,0.06)',paddingBottom:16}}>
+              <div>
+                <h3 style={{color:C.cream,fontSize:20,fontWeight:700}}>{selectedCustomer.name}</h3>
+                <div style={{color:C.muted,fontSize:12,marginTop:4,display:'flex',gap:10,flexWrap:'wrap'}}>
+                  {selectedCustomer.phone && <span>📞 {selectedCustomer.phone}</span>}
+                  {selectedCustomer.email && <span>✉️ {selectedCustomer.email}</span>}
+                  <span>📅 Joined {fmt(selectedCustomer.created_at)}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedCustomer(null)}
+                style={{background:'none',border:'none',color:C.muted,fontSize:20,cursor:'pointer'}}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Financial Overview Chips */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              <div style={{...card,padding:'10px 12px',textAlign:'center'}}>
+                <span style={{color:C.muted,fontSize:10,textTransform:'uppercase'}}>Wallet Balance</span>
+                <p style={{color:C.goldL,fontSize:16,fontWeight:800,marginTop:2}}>{rupee(selectedCustomer.wallet_balance)}</p>
+              </div>
+              <div style={{...card,padding:'10px 12px',textAlign:'center'}}>
+                <span style={{color:C.muted,fontSize:10,textTransform:'uppercase'}}>Total Spent</span>
+                <p style={{color:C.cream,fontSize:16,fontWeight:800,marginTop:2}}>{rupee(selectedCustomer.total_spent)}</p>
+              </div>
+              <div style={{...card,padding:'10px 12px',textAlign:'center'}}>
+                <span style={{color:C.muted,fontSize:10,textTransform:'uppercase'}}>Total Orders</span>
+                <p style={{color:'#38bdf8',fontSize:16,fontWeight:800,marginTop:2}}>{selectedCustomer.order_count || 0}</p>
+              </div>
+            </div>
+
+            {/* Order History */}
+            <div>
+              <p style={{color:C.cream,fontSize:13,fontWeight:700,marginBottom:10}}>Recent Orders & Redemptions</p>
+              {selectedCustomer.recent_orders && selectedCustomer.recent_orders.length > 0 ? (
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  {selectedCustomer.recent_orders.map(o => (
+                    <div key={o.id} style={{
+                      background:'rgba(255,255,255,0.03)',
+                      border:'1px solid rgba(255,255,255,0.06)',
+                      borderRadius:10,
+                      padding:'10px 14px',
+                      display:'flex',
+                      justifyContent:'space-between',
+                      alignItems:'center'
+                    }}>
+                      <div>
+                        <div style={{color:C.cream,fontSize:12,fontFamily:'monospace',fontWeight:600}}>{o.order_id}</div>
+                        <div style={{color:C.muted,fontSize:11,marginTop:2}}>{fmt(o.created_at)}</div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{color:C.goldL,fontWeight:700,fontSize:13}}>{rupee(o.payment_amount)}</div>
+                        <span style={{
+                          fontSize:10,
+                          fontWeight:700,
+                          color: o.payment_id === 'wallet' ? '#c084fc' : C.green
+                        }}>
+                          {o.payment_id === 'wallet' ? '👛 Wallet' : '💳 Gateway'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{color:C.muted,fontSize:12,textAlign:'center',padding:'16px 0'}}>No past orders recorded for this customer.</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div style={{display:'flex',gap:10,marginTop:8}}>
+              <button
+                onClick={() => handleCreditWallet(selectedCustomer.id, selectedCustomer.name)}
+                style={{...btnGold,flex:1}}
+              >
+                + Credit Customer's Wallet
+              </button>
+              <button
+                onClick={() => setSelectedCustomer(null)}
+                style={{...btnGhost,padding:'10px 18px'}}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
