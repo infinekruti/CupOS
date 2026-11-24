@@ -30,7 +30,7 @@ type Stats = {
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type AlertItem = { id:string; machineId:string; errorCode:string; details?:string; timestamp:string; resolved:boolean }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
-type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; phone:string; products:{name:string} }
+type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; order_id?:string; phone?:string|null; is_half?:boolean; user_id?:string|null; products:{id?:string; name:string; price?:number}|null }
 type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; allow_half:boolean; half_price:number }
 type Customer = {
   id: string
@@ -666,52 +666,423 @@ function TransactionsSection() {
 
 // ── Tokens ────────────────────────────────────────────────────
 function TokensSection() {
-  const [tokens,setTokens]=useState<Token[]>([])
-  const [search,setSearch]=useState(''); const [statusF,setStatusF]=useState('')
-  const load=()=>{
-    const p=new URLSearchParams(); if(search)p.set('search',search); if(statusF)p.set('status',statusF)
-    fetch(`/api/admin/tokens?${p}`).then(r=>r.json()).then(d=>setTokens(d.tokens??[]))
+  const [tokens, setTokens] = useState<Token[]>([])
+  const [search, setSearch] = useState('')
+  const [statusF, setStatusF] = useState('')
+  const [sharingToken, setSharingToken] = useState<Token | null>(null)
+  const [targetPhone, setTargetPhone] = useState('')
+  const [targetEmail, setTargetEmail] = useState('')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const load = useCallback(() => {
+    const p = new URLSearchParams()
+    if (search) p.set('search', search)
+    if (statusF) p.set('status', statusF)
+    fetch(`/api/admin/tokens?${p}`)
+      .then(r => r.json())
+      .then(d => setTokens(d.tokens ?? []))
+  }, [search, statusF])
+
+  useEffect(() => { load() }, [load])
+
+  const cancel = async (id: string) => {
+    if (confirm('Are you sure you want to cancel this unused token?')) {
+      await fetch('/api/admin/tokens', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenId: id })
+      })
+      load()
+    }
   }
-  useEffect(()=>{ load() },[])
-  const cancel=async(id:string)=>{
-    await fetch('/api/admin/tokens',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({tokenId:id})})
-    load()
+
+  const getRedeemUrl = (t: Token) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://cupos.in'
+    return `${origin}/gift/${t.order_id || t.token}`
   }
-  const statusColor:Record<string,string>={UNUSED:C.gold,REDEEMED:C.green,EXPIRED:C.muted,CANCELLED:C.red}
-  const inp = { background:'rgba(255,255,255,0.05)', border:`1px solid ${C.border}`, borderRadius:10, padding:'8px 12px', color:C.cream, fontSize:13, fontFamily:C.font, outline:'none' }
+
+  const getWhatsAppMessage = (t: Token) => {
+    const prodName = t.products?.name || 'Beverage'
+    const size = t.is_half ? 'Half Cup' : 'Full Cup'
+    const expires = t.expires_at ? new Date(t.expires_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never'
+    const url = getRedeemUrl(t)
+
+    return `☕ *Your CupOS Drink Token is Ready!*\n\n` +
+      `Drink: *${prodName}* (${size})\n` +
+      `Token Code: *${t.token}*\n` +
+      `Valid Until: ${expires}\n\n` +
+      `📱 *How to Redeem:*\n` +
+      `1. Visit any CupOS Smart Vending Machine.\n` +
+      `2. Open your QR link or scan the token code directly at the camera.\n\n` +
+      `🔗 *View & Redeem QR:*\n${url}\n\n` +
+      `Enjoy your freshly brewed drink! ☕`
+  }
+
+  const getEmailContent = (t: Token) => {
+    const prodName = t.products?.name || 'Beverage'
+    const size = t.is_half ? 'Half Cup' : 'Full Cup'
+    const expires = t.expires_at ? new Date(t.expires_at).toLocaleString('en-IN') : 'Never'
+    const url = getRedeemUrl(t)
+
+    const subject = `☕ Your CupOS Drink Token: ${prodName} (${t.token})`
+    const body = `Hello,\n\n` +
+      `Your beverage token for a freshly prepared ${prodName} (${size}) is ready to be redeemed at any CupOS vending machine.\n\n` +
+      `Token Code: ${t.token}\n` +
+      `Valid Until: ${expires}\n\n` +
+      `To redeem your drink:\n` +
+      `Open the link below to display your QR code to the machine camera, or scan the code directly:\n` +
+      `${url}\n\n` +
+      `Enjoy your beverage!\n` +
+      `CupOS Team`
+
+    return { subject, body }
+  }
+
+  const shareWhatsApp = (t: Token, phoneOverride?: string) => {
+    const phone = (phoneOverride !== undefined ? phoneOverride : (t.phone || '')).replace(/\D/g, '')
+    const fullPhone = phone.length === 10 ? `91${phone}` : phone
+    const text = encodeURIComponent(getWhatsAppMessage(t))
+    const waUrl = fullPhone ? `https://api.whatsapp.com/send?phone=${fullPhone}&text=${text}` : `https://api.whatsapp.com/send?text=${text}`
+    window.open(waUrl, '_blank')
+  }
+
+  const shareGmail = (t: Token, emailOverride?: string) => {
+    const { subject, body } = getEmailContent(t)
+    const to = encodeURIComponent(emailOverride || '')
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+    window.open(gmailUrl, '_blank')
+  }
+
+  const copyMessage = async (t: Token) => {
+    await navigator.clipboard.writeText(getWhatsAppMessage(t))
+    setCopiedId(t.id)
+    setTimeout(() => setCopiedId(null), 2500)
+  }
+
+  const openShareModal = (t: Token) => {
+    setSharingToken(t)
+    setTargetPhone(t.phone || '')
+    setTargetEmail('')
+  }
+
+  const statusColor: Record<string, string> = { UNUSED: C.gold, REDEEMED: C.green, EXPIRED: C.muted, CANCELLED: C.red }
+  const inp = { background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 12px', color: C.cream, fontSize: 13, fontFamily: C.font, outline: 'none' }
+
   return (
     <div style={{display:'flex',flexDirection:'column',gap:16}}>
-      <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Token Management</h2>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
+        <div>
+          <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Token Management</h2>
+          <p style={{color:C.muted,fontSize:13,marginTop:4}}>Inspect QR tokens, cancel expired items, and share unused tokens via WhatsApp or Gmail</p>
+        </div>
+        <button onClick={load} style={btnGhost}>↻ Refresh</button>
+      </div>
+
       <div className="filter-row" style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
-        <input placeholder="Search token…" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:200}} />
+        <input placeholder="Search token (CPOS-…)" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}} />
         <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={{...inp,cursor:'pointer'}}>
           <option value="">All Status</option>
           {['UNUSED','REDEEMED','EXPIRED','CANCELLED'].map(s=><option key={s} value={s}>{s}</option>)}
         </select>
         <button onClick={load} style={btnGold}>Search</button>
       </div>
+
       <div style={{...card,padding:0,overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
-          <thead><tr style={{color:C.muted}}>
-            {['Token','Product','Status','Phone','Created','Redeemed','Action'].map(h=>(
+          <thead><tr style={{color:C.muted,background:'rgba(255,255,255,0.02)'}}>
+            {['Token & QR','Product','Status','Customer Phone','Created','Redeemed','Actions'].map(h=>(
               <th key={h} style={{textAlign:'left',padding:'12px 16px',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:1}}>{h}</th>
             ))}
           </tr></thead>
           <tbody>{tokens.map(t=>(
             <tr key={t.id} style={{borderTop:'1px solid rgba(255,255,255,0.04)'}}>
-              <td style={{padding:'11px 16px',color:C.cream,fontFamily:'monospace',fontSize:12}}>{t.token}</td>
-              <td style={{padding:'11px 16px',color:C.cream}}>{(t.products as {name:string}|null)?.name||'—'}</td>
+              <td style={{padding:'11px 16px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{color:C.cream,fontFamily:'monospace',fontSize:12,fontWeight:700}}>{t.token}</span>
+                  {t.status === 'UNUSED' && (
+                    <button
+                      onClick={() => copyMessage(t)}
+                      title="Copy Token Share Text"
+                      style={{background:'none',border:'none',color:copiedId === t.id ? C.green : C.muted,cursor:'pointer',fontSize:11,padding:'2px 4px'}}
+                    >
+                      {copiedId === t.id ? '✓' : '📋'}
+                    </button>
+                  )}
+                </div>
+              </td>
+              <td style={{padding:'11px 16px',color:C.cream}}>
+                <div>{(t.products as {name:string}|null)?.name||'—'}</div>
+                <div style={{color:C.muted,fontSize:11}}>{t.is_half ? 'Half Cup' : 'Full Cup'}</div>
+              </td>
               <td style={{padding:'11px 16px'}}><span style={badge(statusColor[t.status]||C.muted)}>{t.status}</span></td>
               <td style={{padding:'11px 16px',color:C.muted}}>{t.phone||'—'}</td>
-              <td style={{padding:'11px 16px',color:C.muted,fontSize:12}}>{fmt(t.created_at)}</td>
+              <td style={{padding:'11px 16px',color:C.muted,fontSize:12}}>
+                <div>{fmt(t.created_at)}</div>
+                <div style={{color:'rgba(255,255,255,0.3)',fontSize:11}}>{ago(t.created_at)}</div>
+              </td>
               <td style={{padding:'11px 16px',color:C.muted,fontSize:12}}>{t.redeemed_at?fmt(t.redeemed_at):'—'}</td>
               <td style={{padding:'11px 16px'}}>
-                {t.status==='UNUSED'&&<button onClick={()=>cancel(t.id)} style={{...btnGhost,color:C.red,fontSize:11}}>Cancel</button>}
+                {t.status === 'UNUSED' ? (
+                  <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                    <button
+                      onClick={() => openShareModal(t)}
+                      style={{
+                        background:'rgba(200,146,42,0.15)',
+                        color:C.goldL,
+                        border:`1px solid ${C.border}`,
+                        borderRadius:6,
+                        padding:'5px 10px',
+                        fontSize:11,
+                        fontWeight:700,
+                        cursor:'pointer',
+                        display:'inline-flex',
+                        alignItems:'center',
+                        gap:4
+                      }}
+                    >
+                      📤 Share
+                    </button>
+                    <button
+                      onClick={() => shareWhatsApp(t)}
+                      title="Quick Share on WhatsApp"
+                      style={{
+                        background:'#25D366',
+                        color:'#FFFFFF',
+                        border:'none',
+                        borderRadius:6,
+                        padding:'5px 8px',
+                        fontSize:11,
+                        fontWeight:700,
+                        cursor:'pointer',
+                        display:'inline-flex',
+                        alignItems:'center',
+                        gap:3
+                      }}
+                    >
+                      <span>💬</span> WhatsApp
+                    </button>
+                    <button
+                      onClick={() => shareGmail(t)}
+                      title="Quick Share on Gmail"
+                      style={{
+                        background:'rgba(239,68,68,0.15)',
+                        color:'#ef4444',
+                        border:'1px solid rgba(239,68,68,0.3)',
+                        borderRadius:6,
+                        padding:'5px 8px',
+                        fontSize:11,
+                        fontWeight:700,
+                        cursor:'pointer',
+                        display:'inline-flex',
+                        alignItems:'center',
+                        gap:3
+                      }}
+                    >
+                      <span>✉️</span> Gmail
+                    </button>
+                    <button
+                      onClick={() => cancel(t.id)}
+                      title="Cancel this token"
+                      style={{...btnGhost,color:C.red,fontSize:11,padding:'5px 8px'}}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{color:C.muted,fontSize:12}}>—</span>
+                )}
               </td>
             </tr>
-          ))}</tbody>
+          ))}
+          {tokens.length === 0 && (
+            <tr><td colSpan={7} style={{padding:'24px',textAlign:'center',color:C.muted}}>No tokens found.</td></tr>
+          )}
+          </tbody>
         </table>
       </div>
+
+      {/* Share Token Modal with WhatsApp & Gmail */}
+      {sharingToken && (
+        <div style={{
+          position:'fixed',top:0,left:0,right:0,bottom:0,
+          background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',
+          zIndex:1000,backdropFilter:'blur(5px)',padding:20
+        }}>
+          <div style={{
+            background:'#0D0A08',
+            border:`1px solid ${C.gold}`,
+            borderRadius:20,
+            padding:'28px 24px',
+            maxWidth:480,
+            width:'100%',
+            display:'flex',
+            flexDirection:'column',
+            gap:16,
+            boxShadow:'0 20px 40px rgba(0,0,0,0.8)',
+            maxHeight:'90vh',
+            overflowY:'auto'
+          }}>
+            {/* Modal Header */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',borderBottom:'1px solid rgba(255,255,255,0.06)',paddingBottom:12}}>
+              <div>
+                <h3 style={{color:C.cream,fontSize:20,fontWeight:700}}>Share Unused Token</h3>
+                <p style={{color:C.muted,fontSize:12,marginTop:2}}>Send to customer via WhatsApp, Gmail, or copy direct QR code</p>
+              </div>
+              <button
+                onClick={() => setSharingToken(null)}
+                style={{background:'none',border:'none',color:C.muted,fontSize:20,cursor:'pointer'}}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Token Info & QR Card */}
+            <div style={{display:'flex',gap:16,alignItems:'center',background:'rgba(255,255,255,0.03)',border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+              <div style={{background:'#FFFFFF',padding:8,borderRadius:10,flexShrink:0}}>
+                <QRCode value={sharingToken.token} size={110} />
+              </div>
+              <div>
+                <span style={{
+                  background:'rgba(200,146,42,0.2)',
+                  color:C.goldL,
+                  padding:'3px 8px',
+                  borderRadius:6,
+                  fontFamily:'monospace',
+                  fontWeight:800,
+                  fontSize:13
+                }}>
+                  {sharingToken.token}
+                </span>
+                <p style={{color:C.cream,fontSize:15,fontWeight:700,marginTop:6}}>
+                  {sharingToken.products?.name || 'Beverage'}
+                </p>
+                <p style={{color:C.muted,fontSize:12}}>
+                  {sharingToken.is_half ? 'Half Cup Option' : 'Full Cup Standard'}
+                </p>
+                <p style={{color:'rgba(255,255,255,0.4)',fontSize:11,marginTop:4}}>
+                  Valid until: {sharingToken.expires_at ? new Date(sharingToken.expires_at).toLocaleDateString('en-IN', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : 'Never'}
+                </p>
+              </div>
+            </div>
+
+            {/* Recipient Inputs */}
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              <div>
+                <label style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1,display:'block',marginBottom:4}}>
+                  Recipient Phone (for WhatsApp)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 9876543210 (10 digits)"
+                  value={targetPhone}
+                  onChange={e => setTargetPhone(e.target.value)}
+                  style={{
+                    width:'100%',
+                    background:'rgba(255,255,255,0.06)',
+                    border:`1px solid ${C.border}`,
+                    borderRadius:8,
+                    padding:'9px 12px',
+                    color:C.cream,
+                    fontSize:13,
+                    fontFamily:C.font,
+                    outline:'none'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1,display:'block',marginBottom:4}}>
+                  Recipient Email (for Gmail)
+                </label>
+                <input
+                  type="email"
+                  placeholder="e.g. customer@gmail.com"
+                  value={targetEmail}
+                  onChange={e => setTargetEmail(e.target.value)}
+                  style={{
+                    width:'100%',
+                    background:'rgba(255,255,255,0.06)',
+                    border:`1px solid ${C.border}`,
+                    borderRadius:8,
+                    padding:'9px 12px',
+                    color:C.cream,
+                    fontSize:13,
+                    fontFamily:C.font,
+                    outline:'none'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Send Actions */}
+            <div style={{display:'flex',flexDirection:'column',gap:10,marginTop:6}}>
+              <button
+                onClick={() => shareWhatsApp(sharingToken, targetPhone)}
+                style={{
+                  background: '#25D366',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '12px',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(37,211,102,0.3)'
+                }}
+              >
+                <span>💬</span> Share via WhatsApp
+              </button>
+
+              <button
+                onClick={() => shareGmail(sharingToken, targetEmail)}
+                style={{
+                  background: 'linear-gradient(135deg, #EA4335, #C5221F)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '12px',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(234,67,53,0.3)'
+                }}
+              >
+                <span>✉️</span> Share via Gmail
+              </button>
+
+              <div style={{display:'flex',gap:10}}>
+                <button
+                  onClick={() => copyMessage(sharingToken)}
+                  style={{
+                    ...btnGhost,
+                    flex:1,
+                    display:'flex',
+                    alignItems:'center',
+                    justifyContent:'center',
+                    gap:6
+                  }}
+                >
+                  <span>📋</span> {copiedId === sharingToken.id ? '✓ Copied Message!' : 'Copy Share Message'}
+                </button>
+                <button
+                  onClick={() => setSharingToken(null)}
+                  style={{...btnGhost,padding:'10px 18px'}}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

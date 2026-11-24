@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from('tokens')
-    .select('id, token, status, created_at, expires_at, redeemed_at, order_id, phone, user_id, products(id, name, price)')
+    .select('id, token, status, created_at, expires_at, redeemed_at, order_id, phone, user_id, is_half, products(id, name, price)')
     .order('created_at', { ascending: false })
     .limit(150)
 
