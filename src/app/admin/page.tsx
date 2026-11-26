@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import QRCode from 'react-qr-code'
+import SafeQRCode from '@/components/SafeQRCode'
 import { supabase } from '@/lib/supabase'
 import { getErrorMetadata } from '@/lib/error-codes'
 
@@ -280,9 +280,7 @@ function MachinesSection({ machines, alerts, onRefresh }:{ machines:Machine[]; a
             <p style={{color:C.muted,fontSize:13,lineHeight:1.4}}>
               Point this QR code at the machine scanner. It immediately executes the <strong>4× Relay 5 + 1× Relay 1</strong> combination and runs a 10-second hot water cleaning cycle.
             </p>
-            <div style={{background:'#FFFFFF',padding:14,borderRadius:14,marginTop:6}}>
-              <QRCode value="CPOS-FLUSH" size={180} />
-            </div>
+            <SafeQRCode value="CPOS-FLUSH" size={180} />
             <span style={{fontFamily:'monospace',fontSize:12,color:C.goldL,background:'rgba(255,255,255,0.06)',padding:'4px 12px',borderRadius:6}}>
               TOKEN: CPOS-FLUSH
             </span>
@@ -938,8 +936,8 @@ function TokensSection() {
 
             {/* Token Info & QR Card */}
             <div style={{display:'flex',gap:16,alignItems:'center',background:'rgba(255,255,255,0.03)',border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
-              <div style={{background:'#FFFFFF',padding:8,borderRadius:10,flexShrink:0}}>
-                <QRCode value={sharingToken.token} size={110} />
+              <div style={{flexShrink:0}}>
+                <SafeQRCode value={sharingToken.token} size={110} />
               </div>
               <div>
                 <span style={{

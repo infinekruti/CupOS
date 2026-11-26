@@ -122,3 +122,31 @@ body.admin-mode .mobile-container,
   border-radius: 3px;
   background: #C8922A;
 }
+
+/* ── QR Code Dark-Mode Proof Safeguards ─────────────────────── */
+/* Prevents Chrome Android / Samsung Internet / Dark Reader from inverting QR codes into white-on-white */
+.qr-protected,
+.qr-protected *,
+.qr-container,
+.qr-container * {
+  color-scheme: light !important;
+  forced-color-adjust: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  isolation: isolate !important;
+}
+
+.qr-protected svg path[fill="#000000"],
+.qr-protected svg path[fill="#000"],
+.qr-container svg path[fill="#000000"],
+.qr-container svg path[fill="#000"] {
+  fill: #000000 !important;
+}
+
+.qr-protected svg path[fill="#ffffff"],
+.qr-protected svg path[fill="#fff"],
+.qr-container svg path[fill="#ffffff"],
+.qr-container svg path[fill="#fff"] {
+  fill: #ffffff !important;
+}
+

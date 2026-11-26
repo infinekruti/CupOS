@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import QRCode from 'react-qr-code'
+import SafeQRCode from '@/components/SafeQRCode'
 import { supabase } from '@/lib/supabase'
 
 type Product = { id: string; name: string; price: number }
@@ -189,8 +189,8 @@ export default function TestPage() {
             </div>
 
             {/* QR Code */}
-            <div style={{ background: 'white', display: 'inline-block', padding: 16, borderRadius: 16, marginBottom: 12 }}>
-              <QRCode value={result.token} size={180} />
+            <div style={{ marginBottom: 12 }}>
+              <SafeQRCode value={result.token} size={180} />
             </div>
 
             {/* Token string */}

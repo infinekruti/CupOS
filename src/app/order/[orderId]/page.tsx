@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import QRCode from 'react-qr-code'
+import SafeQRCode from '@/components/SafeQRCode'
 
 type TokenData = {
   id: string
@@ -313,11 +313,12 @@ export default function OrderPage({ params }: { params: { orderId: string } }) {
                 backdropFilter: 'blur(20px)',
               }}>
                 {/* QR */}
-                <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'center' }}>
-                  <QRCode
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <SafeQRCode
                     value={activeToken.token}
                     size={220}
-                    style={{ width: '100%', height: 'auto' }}
+                    showTokenText={true}
+                    tokenLabel="Token"
                   />
                 </div>
 

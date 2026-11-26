@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import QRCode from 'react-qr-code'
+import SafeQRCode from '@/components/SafeQRCode'
 import { useRouter } from 'next/navigation'
 
 type TokenData = {
@@ -260,8 +260,13 @@ export default function GiftPage({ params }: { params: { orderId: string } }) {
                 position: 'relative', zIndex: 1, background: 'rgba(26,20,16,0.95)',
                 border: '1px solid rgba(200,146,42,0.25)', borderRadius: 24, padding: 20, backdropFilter: 'blur(20px)',
               }}>
-                <div style={{ background: '#fff', borderRadius: 16, padding: 16, display: 'flex', justifyContent: 'center' }}>
-                  <QRCode value={activeToken.token} size={220} style={{ width: '100%', height: 'auto' }} />
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <SafeQRCode
+                    value={activeToken.token}
+                    size={220}
+                    showTokenText={true}
+                    tokenLabel="Token"
+                  />
                 </div>
                 <div style={{ textAlign: 'center', marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                   <p style={{ color: S.cream, fontWeight: 700, fontSize: 16 }}>Scan at machine</p>
