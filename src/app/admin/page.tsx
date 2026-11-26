@@ -30,7 +30,7 @@ type Stats = {
 type Machine = { id:string; machine_code:string; machine_name:string; location:string; status:string; last_seen:string; firmware_version:string }
 type AlertItem = { id:string; machineId:string; errorCode:string; details?:string; timestamp:string; resolved:boolean }
 type Transaction = { id:string; order_id:string; payment_amount:number; payment_status:string; phone:string; created_at:string; products:{name:string;price:number}[] }
-type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; order_id?:string; phone?:string|null; is_half?:boolean; user_id?:string|null; products:{id?:string; name:string; price?:number}|null }
+type Token = { id:string; token:string; status:string; created_at:string; expires_at:string; redeemed_at:string|null; order_id?:string; phone?:string|null; is_half?:boolean; user_id?:string|null; products:{id?:string; name:string; price?:number; half_price?:number}|null }
 type Product = { id?:string; name:string; description:string; price:number; active:boolean; relay_id:number; dispense_time_ms:number; allow_half:boolean; half_price:number }
 type Customer = {
   id: string
@@ -683,14 +683,54 @@ function TokensSection() {
 
   useEffect(() => { load() }, [load])
 
-  const cancel = async (id: string) => {
-    if (confirm('Are you sure you want to cancel this unused token?')) {
-      await fetch('/api/admin/tokens', {
-        method: 'PATCH',
+  const [refundingToken, setRefundingToken] = useState<Token | null>(null)
+  const [refundType, setRefundType] = useState<'wallet' | 'direct' | 'none'>('wallet')
+  const [refundReason, setRefundReason] = useState('')
+  const [isRefunding, setIsRefunding] = useState(false)
+  const [refundAlert, setRefundAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const getTokenPrice = (t: Token) => {
+    const prod = t.products as any
+    if (!prod) return 0
+    return t.is_half && prod.half_price ? prod.half_price : (prod.price ?? 0)
+  }
+
+  const openRefundModal = (t: Token) => {
+    const isWallet = (t.order_id || '').startsWith('wallet_')
+    setRefundType(isWallet || t.user_id ? 'wallet' : 'direct')
+    setRefundReason('')
+    setRefundingToken(t)
+  }
+
+  const handleExecuteRefund = async () => {
+    if (!refundingToken) return
+    setIsRefunding(true)
+    try {
+      const res = await fetch('/api/admin/tokens/refund', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tokenId: id })
+        body: JSON.stringify({
+          tokenId: refundingToken.id,
+          refundType,
+          reason: refundReason.trim(),
+        }),
       })
-      load()
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setRefundAlert({
+          type: 'success',
+          message: `✓ Token ${data.token} marked CANCELLED! ${data.message || ''}`,
+        })
+        setTimeout(() => setRefundAlert(null), 8000)
+        setRefundingToken(null)
+        load()
+      } else {
+        alert(data.error || 'Failed to process refund.')
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error processing refund.')
+    } finally {
+      setIsRefunding(false)
     }
   }
 
@@ -771,10 +811,37 @@ function TokensSection() {
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
         <div>
           <h2 style={{color:C.cream,fontSize:22,fontWeight:700}}>Token Management</h2>
-          <p style={{color:C.muted,fontSize:13,marginTop:4}}>Inspect QR tokens, cancel expired items, and share unused tokens via WhatsApp or Gmail</p>
+          <p style={{color:C.muted,fontSize:13,marginTop:4}}>Inspect QR tokens, process refunds & cancellations, and share unused tokens via WhatsApp or Gmail</p>
         </div>
         <button onClick={load} style={btnGhost}>↻ Refresh</button>
       </div>
+
+      {refundAlert && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: 12,
+          background: refundAlert.type === 'success' ? 'rgba(74, 222, 128, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+          border: `1px solid ${refundAlert.type === 'success' ? '#4ade80' : '#ef4444'}`,
+          color: refundAlert.type === 'success' ? '#4ade80' : '#ef4444',
+          fontSize: 13,
+          fontWeight: 600,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          animation: 'fade-in 0.3s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>{refundAlert.type === 'success' ? '✓' : '⚠️'}</span>
+            <span>{refundAlert.message}</span>
+          </div>
+          <button
+            onClick={() => setRefundAlert(null)}
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="filter-row" style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
         <input placeholder="Search token (CPOS-…)" value={search} onChange={e=>setSearch(e.target.value)} style={{...inp,width:220}} />
@@ -879,11 +946,24 @@ function TokensSection() {
                       <span>✉️</span> Gmail
                     </button>
                     <button
-                      onClick={() => cancel(t.id)}
-                      title="Cancel this token"
-                      style={{...btnGhost,color:C.red,fontSize:11,padding:'5px 8px'}}
+                      onClick={() => openRefundModal(t)}
+                      title="Refund & Cancel this unused token"
+                      style={{
+                        background: 'rgba(239,68,68,0.12)',
+                        color: '#f87171',
+                        border: '1px solid rgba(239,68,68,0.35)',
+                        borderRadius: 6,
+                        padding: '5px 9px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        transition: 'all 0.2s ease',
+                      }}
                     >
-                      ✕
+                      <span>↺</span> Refund & Cancel
                     </button>
                   </div>
                 ) : (
@@ -1077,6 +1157,284 @@ function TokensSection() {
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund & Cancel Modal */}
+      {refundingToken && (
+        <div style={{
+          position:'fixed',top:0,left:0,right:0,bottom:0,
+          background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',
+          zIndex:1000,backdropFilter:'blur(5px)',padding:20
+        }}>
+          <div style={{
+            background:'#0D0A08',
+            border:`1px solid #ef4444`,
+            borderRadius:20,
+            padding:'26px 24px',
+            maxWidth:520,
+            width:'100%',
+            display:'flex',
+            flexDirection:'column',
+            gap:16,
+            boxShadow:'0 20px 40px rgba(0,0,0,0.9)',
+            maxHeight:'90vh',
+            overflowY:'auto'
+          }}>
+            {/* Modal Header */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',borderBottom:'1px solid rgba(255,255,255,0.06)',paddingBottom:12}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{width:36,height:36,borderRadius:10,background:'rgba(239,68,68,0.15)',color:'#ef4444',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700}}>
+                  ↺
+                </div>
+                <div>
+                  <h3 style={{color:C.cream,fontSize:18,fontWeight:700}}>Refund & Cancel Token</h3>
+                  <p style={{color:C.muted,fontSize:12,marginTop:2}}>Cancel token and adjust customer wallet / revenue accounting</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRefundingToken(null)}
+                style={{background:'none',border:'none',color:C.muted,fontSize:20,cursor:'pointer'}}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Token Summary Card */}
+            <div style={{
+              background:'rgba(255,255,255,0.03)',
+              border:`1px solid ${C.border}`,
+              borderRadius:14,
+              padding:16,
+              display:'flex',
+              flexDirection:'column',
+              gap:10
+            }}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <span style={{
+                    background:'rgba(200,146,42,0.2)',
+                    color:C.goldL,
+                    padding:'3px 8px',
+                    borderRadius:6,
+                    fontFamily:'monospace',
+                    fontWeight:800,
+                    fontSize:13
+                  }}>
+                    {refundingToken.token}
+                  </span>
+                  <p style={{color:C.cream,fontSize:15,fontWeight:700,marginTop:6}}>
+                    {refundingToken.products?.name || 'Beverage'} {refundingToken.is_half ? '(Half Cup)' : '(Full Cup)'}
+                  </p>
+                  <p style={{color:C.muted,fontSize:11,marginTop:2}}>
+                    Order: <span style={{fontFamily:'monospace'}}>{refundingToken.order_id || '—'}</span>
+                  </p>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <span style={{fontSize:11,color:C.muted,textTransform:'uppercase',letterSpacing:0.5,display:'block'}}>
+                    Refund Amount
+                  </span>
+                  <span style={{fontSize:22,fontWeight:800,color:C.goldL}}>
+                    {rupee(getTokenPrice(refundingToken))}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',paddingTop:8,borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+                <span style={{
+                  background: (refundingToken.order_id || '').startsWith('wallet_') ? 'rgba(192,132,252,0.15)' : 'rgba(200,146,42,0.15)',
+                  color: (refundingToken.order_id || '').startsWith('wallet_') ? '#c084fc' : C.goldL,
+                  padding:'3px 8px',
+                  borderRadius:6,
+                  fontSize:11,
+                  fontWeight:600
+                }}>
+                  {(refundingToken.order_id || '').startsWith('wallet_') ? '💳 Paid via Wallet' : '⚡ Paid via Gateway'}
+                </span>
+                <span style={{
+                  background:'rgba(255,255,255,0.05)',
+                  color:C.muted,
+                  padding:'3px 8px',
+                  borderRadius:6,
+                  fontSize:11
+                }}>
+                  Customer: {refundingToken.phone || (refundingToken.user_id ? 'Registered Account' : 'Guest')}
+                </span>
+              </div>
+            </div>
+
+            {/* Refund Accounting Options */}
+            <div>
+              <label style={{color:C.cream,fontSize:12,fontWeight:700,display:'block',marginBottom:8}}>
+                Select Refund & Accounting Action:
+              </label>
+
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {/* Option 1: Refund to Wallet */}
+                <label style={{
+                  display:'flex',
+                  alignItems:'flex-start',
+                  gap:12,
+                  padding:'12px 14px',
+                  borderRadius:12,
+                  border:`1px solid ${refundType === 'wallet' ? '#c084fc' : C.border}`,
+                  background: refundType === 'wallet' ? 'rgba(192,132,252,0.08)' : 'rgba(255,255,255,0.02)',
+                  cursor: refundingToken.user_id ? 'pointer' : 'not-allowed',
+                  opacity: refundingToken.user_id ? 1 : 0.5,
+                  transition:'all 0.2s ease'
+                }}>
+                  <input
+                    type="radio"
+                    name="refundOption"
+                    value="wallet"
+                    checked={refundType === 'wallet'}
+                    disabled={!refundingToken.user_id}
+                    onChange={() => setRefundType('wallet')}
+                    style={{marginTop:3,accentColor:'#c084fc'}}
+                  />
+                  <div style={{flex:1}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{color:C.cream,fontWeight:700,fontSize:13}}>💳 Credit to Customer Wallet</span>
+                      <span style={{background:'rgba(192,132,252,0.2)',color:'#c084fc',padding:'2px 6px',borderRadius:4,fontSize:10,fontWeight:700}}>Recommended</span>
+                    </div>
+                    <p style={{color:C.muted,fontSize:11,marginTop:3,lineHeight:1.4}}>
+                      Adds {rupee(getTokenPrice(refundingToken))} directly to the customer's CupOS Wallet. An audit transaction (type: <code>refund</code>) is saved in wallet history.
+                      {!refundingToken.user_id && <span style={{color:'#ef4444',display:'block',marginTop:2}}>⚠️ Not available: this token has no registered customer account.</span>}
+                    </p>
+                  </div>
+                </label>
+
+                {/* Option 2: Direct / Gateway Refund */}
+                <label style={{
+                  display:'flex',
+                  alignItems:'flex-start',
+                  gap:12,
+                  padding:'12px 14px',
+                  borderRadius:12,
+                  border:`1px solid ${refundType === 'direct' ? C.gold : C.border}`,
+                  background: refundType === 'direct' ? 'rgba(200,146,42,0.08)' : 'rgba(255,255,255,0.02)',
+                  cursor:'pointer',
+                  transition:'all 0.2s ease'
+                }}>
+                  <input
+                    type="radio"
+                    name="refundOption"
+                    value="direct"
+                    checked={refundType === 'direct'}
+                    onChange={() => setRefundType('direct')}
+                    style={{marginTop:3,accentColor:C.gold}}
+                  />
+                  <div style={{flex:1}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <span style={{color:C.cream,fontWeight:700,fontSize:13}}>⚡ Direct / Gateway Refund</span>
+                      <span style={{background:'rgba(200,146,42,0.2)',color:C.goldL,padding:'2px 6px',borderRadius:4,fontSize:10,fontWeight:700}}>Deduct Revenue</span>
+                    </div>
+                    <p style={{color:C.muted,fontSize:11,marginTop:3,lineHeight:1.4}}>
+                      Deducts {rupee(getTokenPrice(refundingToken))} from daily/monthly sales and order totals in accounting. Use this if you refunded the customer via Razorpay Dashboard, UPI, or cash.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Option 3: Cancel without monetary refund */}
+                <label style={{
+                  display:'flex',
+                  alignItems:'flex-start',
+                  gap:12,
+                  padding:'12px 14px',
+                  borderRadius:12,
+                  border:`1px solid ${refundType === 'none' ? '#ef4444' : C.border}`,
+                  background: refundType === 'none' ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)',
+                  cursor:'pointer',
+                  transition:'all 0.2s ease'
+                }}>
+                  <input
+                    type="radio"
+                    name="refundOption"
+                    value="none"
+                    checked={refundType === 'none'}
+                    onChange={() => setRefundType('none')}
+                    style={{marginTop:3,accentColor:'#ef4444'}}
+                  />
+                  <div style={{flex:1}}>
+                    <span style={{color:C.cream,fontWeight:700,fontSize:13}}>✕ Cancel Only (No Monetary Refund)</span>
+                    <p style={{color:C.muted,fontSize:11,marginTop:3,lineHeight:1.4}}>
+                      Marks token CANCELLED without any wallet credit or revenue adjustment (use for staff tests, expired vouchers, or customer dispute write-offs).
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Optional Reason */}
+            <div>
+              <label style={{color:C.muted,fontSize:11,textTransform:'uppercase',letterSpacing:1,display:'block',marginBottom:4}}>
+                Reason for Refund / Cancellation (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Customer cancelled order / machine maintenance"
+                value={refundReason}
+                onChange={e => setRefundReason(e.target.value)}
+                style={{
+                  width:'100%',
+                  background:'rgba(255,255,255,0.06)',
+                  border:`1px solid ${C.border}`,
+                  borderRadius:8,
+                  padding:'9px 12px',
+                  color:C.cream,
+                  fontSize:13,
+                  fontFamily:C.font,
+                  outline:'none'
+                }}
+              />
+            </div>
+
+            {/* Warning & Confirm */}
+            <div style={{
+              background:'rgba(239,68,68,0.1)',
+              border:'1px solid rgba(239,68,68,0.25)',
+              borderRadius:10,
+              padding:'10px 14px',
+              fontSize:11,
+              color:'#fca5a5',
+              lineHeight:1.4
+            }}>
+              ⚠️ <strong>Irreversible Action:</strong> Once confirmed, token <strong>{refundingToken.token}</strong> will be permanently marked <strong>CANCELLED</strong> and rejected by all vending machines.
+            </div>
+
+            <div style={{display:'flex',gap:10,marginTop:4}}>
+              <button
+                onClick={() => setRefundingToken(null)}
+                disabled={isRefunding}
+                style={{...btnGhost,flex:1}}
+              >
+                Back
+              </button>
+              <button
+                onClick={handleExecuteRefund}
+                disabled={isRefunding}
+                style={{
+                  background: isRefunding ? '#991b1b' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '12px 20px',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: isRefunding ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  flex: 2,
+                  boxShadow: '0 4px 14px rgba(239,68,68,0.3)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {isRefunding ? 'Processing Refund & Accounting...' : `Confirm Refund & Cancel (${rupee(getTokenPrice(refundingToken))})`}
+              </button>
             </div>
           </div>
         </div>

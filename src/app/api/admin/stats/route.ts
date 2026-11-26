@@ -18,8 +18,8 @@ export async function GET() {
       { data: walletCredits },
     ] = await Promise.all([
       supabaseAdmin.from('machines').select('id, status'),
-      supabaseAdmin.from('transactions').select('payment_id, payment_amount, user_id, phone, created_at').gte('created_at', todayISO),
-      supabaseAdmin.from('transactions').select('payment_id, payment_amount, user_id, phone, created_at').gte('created_at', monthISO),
+      supabaseAdmin.from('transactions').select('payment_id, payment_amount, user_id, phone, created_at, payment_status').gte('created_at', todayISO),
+      supabaseAdmin.from('transactions').select('payment_id, payment_amount, user_id, phone, created_at, payment_status').gte('created_at', monthISO),
       supabaseAdmin.from('tokens').select('id, is_half, created_at, status, products(name)').gte('created_at', monthISO),
       supabaseAdmin.from('wallet_transactions').select('amount').eq('type', 'admin_credit')
     ])
@@ -32,9 +32,10 @@ export async function GET() {
 
     const coffeeToday = monthTokens?.filter(t => t.status === 'REDEEMED' && t.created_at >= todayISO).length ?? 0
 
-    // Direct (payment gateway) vs Wallet Redemptions breakdown
-    const todayDirectTx = todayTx?.filter(t => t.payment_id !== 'wallet') ?? []
-    const todayWalletTx = todayTx?.filter(t => t.payment_id === 'wallet') ?? []
+    // Filter out transactions that have been completely refunded or have 0 payment_amount
+    const validTodayTx = todayTx?.filter(t => t.payment_status !== 'refunded' && t.payment_amount > 0) ?? []
+    const todayDirectTx = validTodayTx.filter(t => t.payment_id !== 'wallet')
+    const todayWalletTx = validTodayTx.filter(t => t.payment_id === 'wallet')
 
     const revenueToday = todayDirectTx.reduce((s, t) => s + t.payment_amount, 0)
     const ordersToday = todayDirectTx.length
@@ -44,9 +45,10 @@ export async function GET() {
 
     const totalSalesToday = revenueToday + walletRedemptionToday
 
-    // Monthly Direct vs Wallet Redemptions
-    const monthDirectTx = monthTx?.filter(t => t.payment_id !== 'wallet') ?? []
-    const monthWalletTx = monthTx?.filter(t => t.payment_id === 'wallet') ?? []
+    // Monthly Direct vs Wallet Redemptions (excluding refunded transactions)
+    const validMonthTx = monthTx?.filter(t => t.payment_status !== 'refunded' && t.payment_amount > 0) ?? []
+    const monthDirectTx = validMonthTx.filter(t => t.payment_id !== 'wallet')
+    const monthWalletTx = validMonthTx.filter(t => t.payment_id === 'wallet')
 
     const revenueMonth = monthDirectTx.reduce((s, t) => s + t.payment_amount, 0)
     const ordersMonth = monthDirectTx.length
@@ -92,7 +94,7 @@ export async function GET() {
       })
     }
 
-    monthTx?.forEach(tx => {
+    validMonthTx.forEach(tx => {
       const dateStr = tx.created_at.split('T')[0]
       const day = last7Days.find(d => d.date === dateStr)
       if (day) {
