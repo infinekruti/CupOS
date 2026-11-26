@@ -711,7 +711,7 @@ function TokensSection() {
       `Valid Until: ${expires}\n\n` +
       `📱 *How to Redeem:*\n` +
       `1. Visit any CupOS Smart Vending Machine.\n` +
-      `2. Open your QR link or scan the token code directly at the camera.\n\n` +
+      `2. Open your QR link and scan the QR code at the machine.\n\n` +
       `🔗 *View & Redeem QR:*\n${url}\n\n` +
       `Enjoy your freshly brewed drink! ☕`
   }
@@ -728,7 +728,7 @@ function TokensSection() {
       `Token Code: ${t.token}\n` +
       `Valid Until: ${expires}\n\n` +
       `To redeem your drink:\n` +
-      `Open the link below to display your QR code to the machine camera, or scan the code directly:\n` +
+      `Open the link below and scan the QR code at the machine:\n` +
       `${url}\n\n` +
       `Enjoy your beverage!\n` +
       `CupOS Team`
