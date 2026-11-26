@@ -25,6 +25,11 @@ const DRINK_EMOJIS: Record<string, string> = {
   Cappuccino: '🍵',
   Latte: '🥛',
   'Hot Chocolate': '🍫',
+  'Tomato Soup': '🍲',
+  'Tomato soup': '🍲',
+  'Hot Coffee': '☕',
+  'Black Coffee': '☕',
+  'Masala Chai': '🫖',
 }
 
 const S = {

@@ -24,6 +24,11 @@ const DRINK_IMAGES: Record<string, string> = {
   Cappuccino: '/cappuccino.png',
   Latte: '/latte.png',
   'Hot Chocolate': '/hot-chocolate.png',
+  'Tomato Soup': '/tomato-soup.png',
+  'Tomato soup': '/tomato-soup.png',
+  'Hot Coffee': '/cappuccino.png',
+  'Black Coffee': '/espresso.png',
+  'Masala Chai': '/latte.png',
 }
 
 const DRINK_EMOJIS: Record<string, string> = {
@@ -31,6 +36,11 @@ const DRINK_EMOJIS: Record<string, string> = {
   Cappuccino: '🍵',
   Latte: '🥛',
   'Hot Chocolate': '🍫',
+  'Tomato Soup': '🍲',
+  'Tomato soup': '🍲',
+  'Hot Coffee': '☕',
+  'Black Coffee': '☕',
+  'Masala Chai': '🫖',
 }
 
 const S = {

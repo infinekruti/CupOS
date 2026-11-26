@@ -23,6 +23,11 @@ const DRINK_EMOJIS: Record<string, string> = {
   Cappuccino: '🍵',
   Latte: '🥛',
   'Hot Chocolate': '🍫',
+  'Tomato Soup': '🍲',
+  'Tomato soup': '🍲',
+  'Hot Coffee': '☕',
+  'Black Coffee': '☕',
+  'Masala Chai': '🫖',
 }
 
 const DRINK_COLORS: Record<string, string> = {
@@ -30,6 +35,11 @@ const DRINK_COLORS: Record<string, string> = {
   Cappuccino: '#8B5E3C',
   Latte: '#A0784A',
   'Hot Chocolate': '#5C3D2E',
+  'Tomato Soup': '#C2410C',
+  'Tomato soup': '#C2410C',
+  'Hot Coffee': '#6B3A2A',
+  'Black Coffee': '#382216',
+  'Masala Chai': '#9A6B3D',
 }
 
 const S = {

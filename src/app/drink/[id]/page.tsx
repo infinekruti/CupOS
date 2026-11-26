@@ -17,6 +17,11 @@ const DRINK_IMAGES: Record<string, { large: string; desc: string }> = {
   Cappuccino:      { large: '/cappuccino-large.png',     desc: 'Smooth • Rich • Perfect' },
   Latte:           { large: '/latte-large.png',          desc: 'Creamy • Mild • Comforting' },
   'Hot Chocolate': { large: '/hot-chocolate-large.png',  desc: 'Sweet • Warm • Indulgent' },
+  'Tomato Soup':   { large: '/tomato-soup-large.png',    desc: 'Rich • Warm • Savory' },
+  'Tomato soup':   { large: '/tomato-soup-large.png',    desc: 'Rich • Warm • Savory' },
+  'Hot Coffee':    { large: '/cappuccino-large.png',     desc: 'Smooth • Rich • Perfect' },
+  'Black Coffee':  { large: '/espresso-large.png',       desc: 'Bold • Strong • Classic' },
+  'Masala Chai':   { large: '/latte-large.png',          desc: 'Aromatic • Spiced • Comforting' },
 }
 
 const S = {
